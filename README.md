@@ -4,7 +4,7 @@ This project performs back-translation for paraphrase generation using Trax.
 
 ## Files
 
-- **`cli.py`**: Command-line interface entry point.
+- **`main.py`**: Command-line interface entry point.
 - **`back_translate.py`**: Main logic for back-translation.
 - **`log_single_file.py`**: Updates the log after each cycle.
 - **`translate_and_log_multi_file.py`**: Manages multiple back-translation cycles and logging.
