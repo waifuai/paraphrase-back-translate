@@ -4,26 +4,26 @@ Updates the log with the current cycle count.
 
 import os
 import time
-import utils
+import utils # Keep for is_dir_exist for now
 import update_custom_log
+from config import Config # Import Config
 
-def log_single_cycle(
-    log_dir_stem: str,
-    local_base_dir: str,
-) -> None:
+def log_single_cycle(config: Config) -> None:
     """
     Updates the log to reflect the completion of a single cycle.
 
     Args:
-        log_dir_stem: Base directory name for logs.
-        local_base_dir: Base directory (local only).
+        config: The configuration object.
     """
-    local_log_dir = os.path.join(local_base_dir, log_dir_stem)
+    # Get paths from config object
+    local_log_dir = config.local_log_dir_path
+    counter_file = config.cycle_counter_filepath
+
+    # Ensure log directory exists
     if not utils.is_dir_exist(local_log_dir):
         os.makedirs(local_log_dir)
 
     # Use a file to persist the cycle count.
-    counter_file = os.path.join(local_log_dir, "cycle_count.txt")
     try:
         with open(counter_file, "r") as f:
             cycle_count = int(f.read().strip())
@@ -36,6 +36,7 @@ def log_single_cycle(
     timestamp = int(time.time())
     metric_name = "n_cycles"
 
+    # Pass the log directory path from config
     update_custom_log.update_custom_log(
         x=timestamp,
         y=cycle_count,

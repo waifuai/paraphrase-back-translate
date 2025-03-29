@@ -2,61 +2,49 @@
 Handles back-translation paraphrasing of multiple files.
 """
 
-import utils
+# import utils # No longer needed directly here
 import translate_single_file
 import log_single_file
+from config import Config, TypeOfTranslation # Import Config and Enum
 
 def translate_and_log_single_cycle(
-    translation_type: utils.TypeOfTranslation,
-    pooling_dir: str,
-    model_dir: str,
-    log_dir_stem: str,
-    local_base_dir: str,
+    config: Config,
+    current_translation_type: TypeOfTranslation,
 ) -> None:
     """
     Performs a single back-translation cycle (translation and logging).
-    """
-    translate_single_file.translate_single_file(
-        translation_type=translation_type,
-        pooling_dir=pooling_dir,
-        model_dir=model_dir,
-    )
-
-    log_single_file.log_single_cycle(
-        log_dir_stem=log_dir_stem,
-        local_base_dir=local_base_dir,
-    )
-
-def translate_and_log_multi_file(
-    n_cycles: int,
-    translation_type: utils.TypeOfTranslation,
-    pooling_dir: str,
-    model_dir: str,
-    log_dir_stem: str,
-    local_base_dir: str,
-) -> None:
-    """
-    Performs multiple back-translation cycles.
 
     Args:
-        n_cycles: Number of cycles to perform.
-        translation_type: Initial translation direction.
-        pooling_dir: Directory containing input/output files.
-        model_dir: Directory containing the translation model and vocab files.
-        log_dir_stem: Base name for the log directory.
-        local_base_dir: Base directory (local only).
+        config: The configuration object.
+        current_translation_type: The direction for this specific cycle.
     """
-    for _ in range(n_cycles):
+    # Pass config and current type to translate_single_file
+    translate_single_file.translate_single_file(
+        config=config,
+        current_translation_type=current_translation_type,
+    )
+
+    # Pass config to log_single_cycle (it contains log_dir and local_base_dir)
+    log_single_file.log_single_cycle(config=config)
+
+
+def translate_and_log_multi_file(config: Config) -> None:
+    """
+    Performs multiple back-translation cycles based on the provided configuration.
+
+    Args:
+        config: Configuration object containing all parameters.
+    """
+    current_translation_type = config.initial_translation_type
+
+    for _ in range(config.cycles):
         translate_and_log_single_cycle(
-            translation_type=translation_type,
-            pooling_dir=pooling_dir,
-            model_dir=model_dir,
-            log_dir_stem=log_dir_stem,
-            local_base_dir=local_base_dir,
+            config=config,
+            current_translation_type=current_translation_type,
         )
         # Reverse translation direction for the next cycle.
-        translation_type = (
-            utils.TypeOfTranslation.fr_to_en
-            if translation_type == utils.TypeOfTranslation.en_to_fr
-            else utils.TypeOfTranslation.en_to_fr
+        current_translation_type = (
+            TypeOfTranslation.fr_to_en
+            if current_translation_type == TypeOfTranslation.en_to_fr
+            else TypeOfTranslation.en_to_fr
         )

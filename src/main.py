@@ -5,6 +5,7 @@ CLI entry point for back-translation paraphrasing using Trax.
 
 import argparse
 from back_translate import main
+from config import Config # Import the Config class
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -42,13 +43,17 @@ def parse_args():
 
 def main_cli():
     args = parse_args()
-    main(
-        n_cycles=args.cycles,
-        translation_type=args.translation_type,
+    # Create Config object from parsed arguments
+    config = Config(
+        cycles=args.cycles,
+        initial_translation_type_str=args.translation_type,
         pooling_dir=args.pooling_dir,
         model_dir=args.model_dir,
         log_dir=args.log_dir,
+        # local_base_dir defaults to "." in Config class
     )
+    # Pass the single config object
+    main(config=config)
 
 if __name__ == "__main__":
     main_cli()

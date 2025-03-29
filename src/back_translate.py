@@ -3,43 +3,31 @@ Main entry point for back-translation paraphrasing.
 """
 
 import translate_and_log_multi_file
-import utils
+# No longer need utils here directly for TypeOfTranslation enum
+from config import Config # Import Config
 
-def main(n_cycles: int, translation_type: str, pooling_dir: str, model_dir: str, log_dir: str):
+def main(config: Config):
     """
     Main entry point for the program.
 
     Args:
-        n_cycles: Number of back-translation cycles.
-        translation_type: Either "en_to_fr" or "fr_to_en".
-        pooling_dir: Directory with input/output files.
-        model_dir: Directory for the translation model and vocabulary files.
-        log_dir: Directory for logs.
+        config: Configuration object containing all parameters.
     """
-    # Convert string to enum.
-    if translation_type == "en_to_fr":
-        trans_enum = utils.TypeOfTranslation.en_to_fr
-    else:
-        trans_enum = utils.TypeOfTranslation.fr_to_en
+    # Enum conversion and local_base_dir are handled by Config or passed down
 
-    # Run locally (no remote directories).
-    local_base_dir = "."
+    # Pass the config object directly
+    translate_and_log_multi_file.translate_and_log_multi_file(config=config)
 
-    translate_and_log_multi_file.translate_and_log_multi_file(
-        n_cycles=n_cycles,
-        translation_type=trans_enum,
-        pooling_dir=pooling_dir,
-        model_dir=model_dir,
-        log_dir_stem=log_dir,
-        local_base_dir=local_base_dir,
-    )
 
 if __name__ == "__main__":
     # Default parameters if run directly.
-    main(
-        n_cycles=1,
-        translation_type="en_to_fr",
+    # Create a default Config object
+    default_config = Config(
+        cycles=1,
+        initial_translation_type_str="en_to_fr",
         pooling_dir="./data/pooling",
-        model_dir="./models",
+        model_dir="./models", # Use "dummy" for testing without models
         log_dir="./logs",
+        # local_base_dir defaults to "."
     )
+    main(config=default_config)

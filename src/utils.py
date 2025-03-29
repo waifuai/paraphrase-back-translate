@@ -5,12 +5,8 @@ Utility functions.
 import subprocess
 import os
 import random
-from enum import Enum
+# Removed TypeOfTranslation Enum - now in config.py
 
-class TypeOfTranslation(Enum):
-    """Represents the direction of translation."""
-    en_to_fr = 1
-    fr_to_en = 2
 
 def sh(command: str) -> None:
     """Executes a shell command."""

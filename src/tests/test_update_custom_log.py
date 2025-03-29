@@ -5,8 +5,9 @@ import update_custom_log
 import tensorflow as tf
 
 class TestUpdateCustomLog(unittest.TestCase):
+    @patch('tensorflow.summary.scalar') # Also mock the scalar function
     @patch('tensorflow.summary.create_file_writer')
-    def test_update_custom_log(self, mock_create_file_writer):
+    def test_update_custom_log(self, mock_create_file_writer, mock_scalar): # Add mock_scalar arg
         # Mock the file writer and its context manager.
         mock_writer = MagicMock()
         mock_create_file_writer.return_value = mock_writer
@@ -17,4 +18,5 @@ class TestUpdateCustomLog(unittest.TestCase):
 
         mock_create_file_writer.assert_called_once_with("test_log_dir")
         mock_writer.as_default.assert_called_once() # context manager was used
-        tf.summary.scalar.assert_called_once_with("test_metric", 2.5, step=1)
+        # Assert on the mock object now
+        mock_scalar.assert_called_once_with("test_metric", 2.5, step=1)
