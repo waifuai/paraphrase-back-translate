@@ -8,11 +8,8 @@ import torch # Import torch
 from config import Config, TypeOfTranslation # Import Config and Enum
 import translate_single_file as tsf
 
-# Mock the transformers imports at the module level
-@patch('translate_single_file.AutoTokenizer.from_pretrained')
-@patch('translate_single_file.AutoModelForSeq2SeqLM.from_pretrained')
-@patch('translate_single_file.DEVICE', torch.device('cpu')) # Patch the DEVICE constant directly
-@patch('translate_single_file.utils.get_random_file_from_dir') # Mock random file selection
+# Decorators removed from class level
+
 class TestTranslateSingleFileHF(unittest.TestCase):
 
     # mock_torch_device is no longer needed as an argument here
@@ -73,10 +70,15 @@ class TestTranslateSingleFileHF(unittest.TestCase):
         return mock_model_instance, mock_tokenizer_instance # Indented correctly
 
 
-    def test_translation_en_to_fr(self, mock_get_random_file, mock_device_patch, mock_auto_model, mock_auto_tokenizer): # Renamed mock_device_patch arg
+    @patch('translate_single_file.utils.get_random_file_from_dir')
+    # @patch('translate_single_file.DEVICE', torch.device('cpu')) # Removed this patch
+    @patch('translate_single_file.AutoModelForSeq2SeqLM.from_pretrained')
+    @patch('translate_single_file.AutoTokenizer.from_pretrained')
+    def test_translation_en_to_fr(self, mock_auto_tokenizer, mock_auto_model, mock_get_random_file): # Removed mock_device_patch
         """Tests successful en_to_fr translation using mocked HF components."""
         # mock_torch_device removed from _setup_mocks call
         mock_model, mock_tokenizer = self._setup_mocks(mock_auto_model, mock_auto_tokenizer)
+        # Need to manually check model.to('cpu') assertion if DEVICE patch is removed
         mock_get_random_file.return_value = self.input_filename # Control which file is selected
 
         input_content = "Hello world"
@@ -101,12 +103,18 @@ class TestTranslateSingleFileHF(unittest.TestCase):
         # Model/Tokenizer loading
         mock_auto_tokenizer.assert_called_once_with(expected_model_name)
         mock_auto_model.assert_called_once_with(expected_model_name)
-        mock_model.to.assert_called_once_with(torch.device('cpu')) # Check model moved to mocked device
+        # Assert model is moved to the device determined by the code (likely CUDA in this env)
+        mock_model.to.assert_called_once_with(tsf.DEVICE) # Use the actual DEVICE constant from the module
 
         # Translation calls
         mock_tokenizer.assert_called_once_with(input_content, return_tensors="pt", padding=True, truncation=True, max_length=512)
         mock_model.generate.assert_called_once()
-        mock_tokenizer.decode.assert_called_once_with(mock_model.generate.return_value[0], skip_special_tokens=True)
+        # Check decode call manually due to tensor comparison issue with assert_called_once_with
+        self.assertEqual(mock_tokenizer.decode.call_count, 1)
+        call_args, call_kwargs = mock_tokenizer.decode.call_args
+        self.assertTrue(torch.equal(call_args[0], mock_model.generate.return_value[0]))
+        self.assertEqual(call_kwargs, {'skip_special_tokens': True})
+
 
         # File results
         self.assertTrue(os.path.exists(translated_file_path), "Translated file not found")
@@ -118,10 +126,15 @@ class TestTranslateSingleFileHF(unittest.TestCase):
         self.assertTrue(os.path.exists(completed_file_path), "Input file not found in completed dir")
 
 
-    def test_translation_fr_to_en(self, mock_get_random_file, mock_device_patch, mock_auto_model, mock_auto_tokenizer): # Renamed mock_device_patch arg
+    @patch('translate_single_file.utils.get_random_file_from_dir')
+    # @patch('translate_single_file.DEVICE', torch.device('cpu')) # Removed this patch
+    @patch('translate_single_file.AutoModelForSeq2SeqLM.from_pretrained')
+    @patch('translate_single_file.AutoTokenizer.from_pretrained')
+    def test_translation_fr_to_en(self, mock_auto_tokenizer, mock_auto_model, mock_get_random_file): # Removed mock_device_patch
         """Tests successful fr_to_en translation using mocked HF components."""
         # mock_torch_device removed from _setup_mocks call
         mock_model, mock_tokenizer = self._setup_mocks(mock_auto_model, mock_auto_tokenizer)
+        # Need to manually check model.to('cpu') assertion if DEVICE patch is removed
         mock_get_random_file.return_value = self.input_filename
 
         input_content = "Bonjour le monde"
@@ -144,10 +157,15 @@ class TestTranslateSingleFileHF(unittest.TestCase):
         # --- Assertions ---
         mock_auto_tokenizer.assert_called_once_with(expected_model_name)
         mock_auto_model.assert_called_once_with(expected_model_name)
-        mock_model.to.assert_called_once_with(torch.device('cpu'))
+        # Assert model is moved to the device determined by the code (likely CUDA in this env)
+        mock_model.to.assert_called_once_with(tsf.DEVICE) # Use the actual DEVICE constant from the module
         mock_tokenizer.assert_called_once_with(input_content, return_tensors="pt", padding=True, truncation=True, max_length=512)
         mock_model.generate.assert_called_once()
-        mock_tokenizer.decode.assert_called_once_with(mock_model.generate.return_value[0], skip_special_tokens=True)
+        # Check decode call manually due to tensor comparison issue with assert_called_once_with
+        self.assertEqual(mock_tokenizer.decode.call_count, 1)
+        call_args, call_kwargs = mock_tokenizer.decode.call_args
+        self.assertTrue(torch.equal(call_args[0], mock_model.generate.return_value[0]))
+        self.assertEqual(call_kwargs, {'skip_special_tokens': True})
 
         self.assertTrue(os.path.exists(translated_file_path), "Translated file not found")
         with open(translated_file_path, "r", encoding='utf-8') as f:
@@ -157,7 +175,11 @@ class TestTranslateSingleFileHF(unittest.TestCase):
         self.assertTrue(os.path.exists(completed_file_path), "Input file not found in completed dir")
 
 
-    def test_model_loading_error(self, mock_get_random_file, mock_device_patch, mock_auto_model, mock_auto_tokenizer): # Added mock_auto_tokenizer, renamed mock_device_patch
+    @patch('translate_single_file.utils.get_random_file_from_dir')
+    # @patch('translate_single_file.DEVICE', torch.device('cpu')) # Removed this patch
+    @patch('translate_single_file.AutoModelForSeq2SeqLM.from_pretrained')
+    @patch('translate_single_file.AutoTokenizer.from_pretrained')
+    def test_model_loading_error(self, mock_auto_tokenizer, mock_auto_model, mock_get_random_file): # Removed mock_device_patch
         """Tests that OSError during model loading is raised."""
         mock_get_random_file.return_value = self.input_filename
         self._create_input_file("Test content", self.input_pool_en)
@@ -176,7 +198,11 @@ class TestTranslateSingleFileHF(unittest.TestCase):
             tsf.translate_single_file(config=test_config, current_translation_type=current_type)
 
 
-    def test_empty_input_file(self, mock_get_random_file, mock_device_patch, mock_auto_model, mock_auto_tokenizer): # Added mock_auto_tokenizer, renamed mock_device_patch
+    @patch('translate_single_file.utils.get_random_file_from_dir')
+    # @patch('translate_single_file.DEVICE', torch.device('cpu')) # Removed this patch
+    @patch('translate_single_file.AutoModelForSeq2SeqLM.from_pretrained')
+    @patch('translate_single_file.AutoTokenizer.from_pretrained')
+    def test_empty_input_file(self, mock_auto_tokenizer, mock_auto_model, mock_get_random_file): # Removed mock_device_patch
         """Tests handling of an empty input file."""
         # Pass only needed mocks to _setup_mocks
         mock_model, mock_tokenizer = self._setup_mocks(mock_auto_model, mock_auto_tokenizer) # Removed mock_torch_device
@@ -214,7 +240,11 @@ class TestTranslateSingleFileHF(unittest.TestCase):
         self.assertTrue(os.path.exists(completed_file_path))
 
 
-    def test_translation_error_handling(self, mock_get_random_file, mock_device_patch, mock_auto_model, mock_auto_tokenizer): # Added mock_auto_tokenizer, renamed mock_device_patch
+    @patch('translate_single_file.utils.get_random_file_from_dir')
+    # @patch('translate_single_file.DEVICE', torch.device('cpu')) # Removed this patch
+    @patch('translate_single_file.AutoModelForSeq2SeqLM.from_pretrained')
+    @patch('translate_single_file.AutoTokenizer.from_pretrained')
+    def test_translation_error_handling(self, mock_auto_tokenizer, mock_auto_model, mock_get_random_file): # Removed mock_device_patch
         """Tests handling of an error during the model.generate step."""
         # Pass only needed mocks to _setup_mocks
         mock_model, mock_tokenizer = self._setup_mocks(mock_auto_model, mock_auto_tokenizer) # Removed mock_torch_device
