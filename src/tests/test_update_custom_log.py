@@ -2,21 +2,27 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import update_custom_log
-import tensorflow as tf
+# import tensorflow as tf # Removed TF import
+import logging # Import logging
 
 class TestUpdateCustomLog(unittest.TestCase):
-    @patch('tensorflow.summary.scalar') # Also mock the scalar function
-    @patch('tensorflow.summary.create_file_writer')
-    def test_update_custom_log(self, mock_create_file_writer, mock_scalar): # Add mock_scalar arg
-        # Mock the file writer and its context manager.
-        mock_writer = MagicMock()
-        mock_create_file_writer.return_value = mock_writer
-        mock_writer_context = MagicMock()
-        mock_writer.__enter__.return_value = mock_writer_context
+    # Patch the logger instance within the update_custom_log module
+    @patch('update_custom_log.logger')
+    def test_update_custom_log(self, mock_logger):
+        # No need to mock file writer or scalar anymore
 
-        update_custom_log.update_custom_log(x=1, y=2.5, name="test_metric", log_dir="test_log_dir")
+        test_x = 1
+        test_y = 2.5
+        test_name = "test_metric"
+        expected_log_message = f"Metric - Step: {test_x}, Name: {test_name}, Value: {test_y}"
 
-        mock_create_file_writer.assert_called_once_with("test_log_dir")
-        mock_writer.as_default.assert_called_once() # context manager was used
-        # Assert on the mock object now
-        mock_scalar.assert_called_once_with("test_metric", 2.5, step=1)
+        # Call the function (log_dir is no longer an argument)
+        update_custom_log.update_custom_log(x=test_x, y=test_y, name=test_name)
+
+        # Assert that the logger's info method was called with the correct message
+        mock_logger.info.assert_called_once_with(expected_log_message)
+
+        # Remove old TF assertions
+        # mock_create_file_writer.assert_called_once_with("test_log_dir")
+        # mock_writer.as_default.assert_called_once() # context manager was used
+        # mock_scalar.assert_called_once_with("test_metric", 2.5, step=1)

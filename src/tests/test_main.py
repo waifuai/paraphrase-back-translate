@@ -14,7 +14,7 @@ class TestMain(unittest.TestCase):
             "--cycles", "3",
             "--translation-type", "fr_to_en",
             "--pooling-dir", "test_pool",
-            "--model-dir", "test_model",
+            # "--model-dir", "test_model", # Removed
             "--log-dir", "test_log"
         ]
 
@@ -33,9 +33,9 @@ class TestMain(unittest.TestCase):
         self.assertEqual(config_arg.initial_translation_type_str, "fr_to_en")
         self.assertEqual(config_arg.initial_translation_type, TypeOfTranslation.fr_to_en)
         self.assertEqual(config_arg.pooling_dir, "test_pool")
-        self.assertEqual(config_arg.model_dir, "test_model")
+        # self.assertEqual(config_arg.model_dir, "test_model") # Removed
         self.assertEqual(config_arg.log_dir, "test_log")
-        self.assertFalse(config_arg.use_dummy_model) # model_dir is not "dummy"
+        # self.assertFalse(config_arg.use_dummy_model) # Removed dummy logic
 
         # --- Test default arguments ---
         mock_main.reset_mock()
@@ -55,6 +55,6 @@ class TestMain(unittest.TestCase):
         self.assertEqual(config_arg_default.initial_translation_type_str, "en_to_fr")
         self.assertEqual(config_arg_default.initial_translation_type, TypeOfTranslation.en_to_fr)
         self.assertEqual(config_arg_default.pooling_dir, "./data/pooling")
-        self.assertEqual(config_arg_default.model_dir, "./models")
+        # self.assertEqual(config_arg_default.model_dir, "./models") # Removed
         self.assertEqual(config_arg_default.log_dir, "./logs")
-        self.assertFalse(config_arg_default.use_dummy_model) # Default model_dir is not "dummy"
+        # self.assertFalse(config_arg_default.use_dummy_model) # Removed dummy logic

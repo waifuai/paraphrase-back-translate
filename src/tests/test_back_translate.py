@@ -13,7 +13,7 @@ class TestBackTranslate(unittest.TestCase):
             cycles=2,
             initial_translation_type_str="en_to_fr",
             pooling_dir="pool",
-            model_dir="model",
+            # model_dir="model", # Removed
             log_dir="log",
         )
         # Call main with the config object
@@ -30,7 +30,7 @@ class TestBackTranslate(unittest.TestCase):
             cycles=3,
             initial_translation_type_str="fr_to_en",
             pooling_dir="pool2",
-            model_dir="model2",
+            # model_dir="model2", # Removed
             log_dir="log2",
         )
         # Call main with the second config object

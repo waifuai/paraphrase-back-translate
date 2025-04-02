@@ -1,42 +1,42 @@
 """
-Translates a single file using a specified translation model via Trax.
+Translates a single file using a specified Hugging Face translation model.
 """
 
 import os
 import shutil
 import utils # Keep for get_random_file_from_dir
-# Defer trax imports until needed
-# import trax
-# import trax.data
-# import trax.supervised.decoding
+import torch
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from config import Config, TypeOfTranslation # Import Config and Enum
+
+# Determine device
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {DEVICE}")
 
 def translate_single_file(
     config: Config,
     current_translation_type: TypeOfTranslation,
 ) -> None:
     """
-    Translates a single file based on the provided configuration and cycle type.
+    Translates a single file based on the provided configuration and cycle type
+    using Hugging Face Transformers.
 
     Args:
         config: The configuration object.
         current_translation_type: The direction for this specific cycle.
     """
-    # --- Main Logic (will be updated after helpers) ---
+    # --- Main Logic ---
     input_filename = _get_input_file(config, current_translation_type)
-    local_input_filepath = _copy_input_file_to_local(config, current_translation_type, input_filename)
+    input_filepath = os.path.join(config.get_input_dir(current_translation_type), input_filename)
 
-    # Check model presence using config
-    if not config.use_dummy_model and not _is_model_present(config, current_translation_type):
-        raise FileNotFoundError(f"Model file not found in {config.model_dir} for type {current_translation_type}")
+    # Load model and tokenizer
+    model, tokenizer = _load_hf_model_and_tokenizer(config, current_translation_type)
 
-    # Load model using config
-    model = _load_model(config, current_translation_type)
-    # Translate file using config and local path (assuming local path needed for now)
-    # Note: input_file variable is no longer used here, using local_input_filepath
-    translated_filepath = _translate_file(config, model, local_input_filepath, current_translation_type)
-    # Move files using config
-    _move_files(config, current_translation_type, input_filename, translated_filepath)
+    # Translate file directly from input pool to output pool
+    _translate_file(config, model, tokenizer, input_filepath, input_filename, current_translation_type)
+
+    # Move the original input file to completed directory
+    _move_input_to_completed(config, current_translation_type, input_filename)
 
 
 def _get_input_file(config: Config, current_translation_type: TypeOfTranslation) -> str:
@@ -46,153 +46,122 @@ def _get_input_file(config: Config, current_translation_type: TypeOfTranslation)
     return utils.get_random_file_from_dir(input_dir)
 
 
-def _copy_input_file_to_local(
-    config: Config,
-    current_translation_type: TypeOfTranslation,
-    input_filename: str
-) -> str:
+# Removed _copy_input_file_to_local
+# Removed _is_model_present
+
+
+def _load_hf_model_and_tokenizer(config: Config, current_translation_type: TypeOfTranslation):
     """
-    Copies the selected input file to the local directory (`.`).
-    TODO: Investigate if this copy is necessary or if translation can read directly.
-          If needed, consider using tempfile module.
-
-    Returns:
-        The path to the local copy of the input file (currently just the filename).
+    Loads the Hugging Face translation model and tokenizer based on config.
+    Moves the model to the appropriate device (GPU if available).
     """
-    input_dir = config.get_input_dir(current_translation_type)
-    source_path = os.path.join(input_dir, input_filename)
-    # Copy to current directory for now. The destination path is just the filename.
-    local_copy_path = os.path.basename(input_filename) # Or just input_filename if always in root
-    shutil.copy(source_path, local_copy_path)
-    print(f"Copied input file: {input_filename} to {local_copy_path}")
-    return local_copy_path # Return the path to the local copy
+    # Removed dummy model logic
+    model_name = config.get_hf_model_name(current_translation_type)
+    print(f"Loading model and tokenizer: {model_name}")
 
-
-def _is_model_present(config: Config, current_translation_type: TypeOfTranslation) -> bool:
-    """Checks if the expected model file exists using the config object."""
-    # config.get_model_filepath handles the dummy case implicitly (returns "")
-    model_filepath = config.get_model_filepath(current_translation_type)
-    return os.path.exists(model_filepath)
-
-
-def _load_model(config: Config, current_translation_type: TypeOfTranslation):
-    """
-    Loads the translation model using Trax or returns a dummy translator, based on config.
-    """
-    if config.use_dummy_model:
-        # Dummy translator: simply reverses the text.
-        print("Using dummy translator.")
-        return lambda text: text[::-1]
-
-    # Get model path from config
-    model_filepath = config.get_model_filepath(current_translation_type)
-    print(f"Loading model from: {model_filepath}")
-    import trax # Import trax here
-
-    # Initialize and load the Trax model
-    model = trax.models.Transformer(
-       input_vocab_size=33300, # TODO: Consider making vocab size configurable?
-       d_model=512, d_ff=2048,
-       n_heads=8, n_encoder_layers=6, n_decoder_layers=6,
-       max_len=2048, mode='predict') # TODO: Make model params configurable?
-    model.init_from_file(model_filepath, weights_only=True)
-    return model
-
-
-# This function is no longer strictly needed as config provides the paths directly
-# def _get_vocab_params(config: Config, current_translation_type: TypeOfTranslation):
-#     """
-#     Returns the vocabulary directory and file name based on config.
-#     """
-#     vocab_filename = config.get_vocab_filename(current_translation_type)
-#     # Vocab files are expected in the model_dir
-#     return config.model_dir, vocab_filename
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        model.to(DEVICE) # Move model to GPU if available
+        print(f"Model {model_name} loaded successfully on {DEVICE}.")
+        return model, tokenizer
+    except OSError as e:
+        print(f"Error loading model {model_name}. Check model name and internet connection.")
+        raise e
 
 
 def _translate_file(
     config: Config,
-    model, # Can be Trax model or dummy lambda
-    local_input_filepath: str,
+    model,
+    tokenizer,
+    input_filepath: str,
+    input_filename: str, # Needed for output filename
     current_translation_type: TypeOfTranslation
-) -> str:
+) -> None:
     """
-    Performs the translation using the loaded model (Trax or dummy).
-    Reads from the local input file path and writes to a local translated file path.
+    Performs the translation using the loaded Hugging Face model and tokenizer.
+    Reads directly from the input file path and writes directly to the final output path.
 
     Args:
         config: The configuration object.
-        model: The loaded Trax model or dummy translator function.
-        local_input_filepath: Path to the input file copied locally.
+        model: The loaded Hugging Face model.
+        tokenizer: The loaded Hugging Face tokenizer.
+        input_filepath: Full path to the input file in the source pool.
+        input_filename: Original filename (used for output).
         current_translation_type: The direction for this cycle.
-
-    Returns:
-        The path to the locally created translated file.
     """
-    print(f"Translating file: {local_input_filepath}")
-    with open(local_input_filepath, "r") as f:
-         input_text = f.read()
+    print(f"Translating file: {input_filepath}")
+    try:
+        with open(input_filepath, "r", encoding='utf-8') as f: # Specify encoding
+             input_text = f.read()
+    except FileNotFoundError:
+        print(f"Error: Input file not found at {input_filepath}")
+        # Or raise the error depending on desired behavior
+        raise
 
-         import trax.data
-         import trax.supervised.decoding # Import trax here
-    # Check if it's a real Trax model (has 'apply') or the dummy lambda
-    if not config.use_dummy_model and hasattr(model, "apply"):
-         # Use config to get vocab details
-         vocab_dir = config.model_dir # Vocab files are in model_dir
-         vocab_file = config.get_vocab_filename(current_translation_type)
-         print(f"Using vocab: dir='{vocab_dir}', file='{vocab_file}'")
-
-         tokenized = list(trax.data.tokenize(iter([input_text]), vocab_dir=vocab_dir, vocab_file=vocab_file))[0]
-         tokenized = tokenized[None, :]  # Add batch dimension.
-         tokenized_translation = trax.supervised.decoding.autoregressive_sample(model, tokenized, temperature=0.0) # Use temperature from config?
-         tokenized_translation = tokenized_translation[0][:-1]  # Remove EOS token.
-         translation = trax.data.detokenize(tokenized_translation, vocab_dir=vocab_dir, vocab_file=vocab_file)
+    if not input_text.strip():
+        print("Input file is empty or contains only whitespace. Skipping translation.")
+        translation = ""
     else:
-         # Dummy translation (model is the lambda function)
-         print("Applying dummy translation (reversing text).")
-         translation = model(input_text)
+        try:
+            # Tokenize
+            inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True, max_length=512).to(DEVICE) # Move inputs to device
 
-    # Create the translated file locally (e.g., "input.txt.translated")
-    translated_filepath = local_input_filepath + ".translated"
-    print(f"Writing translated output to: {translated_filepath}")
-    with open(translated_filepath, "w") as f:
+            # Generate translation
+            # Adjust generation parameters as needed (e.g., max_length, num_beams)
+            translated_tokens = model.generate(**inputs, max_length=512)
+
+            # Decode
+            translation = tokenizer.decode(translated_tokens[0], skip_special_tokens=True)
+            print(f"Translation successful.")
+
+        except Exception as e:
+            print(f"Error during translation of {input_filename}: {e}")
+            # Decide how to handle translation errors (e.g., write empty file, skip, raise)
+            translation = f"TRANSLATION_ERROR: {e}" # Example: Write error message
+
+    # Determine final output path
+    output_dir_path = config.get_output_dir(current_translation_type)
+    final_translated_path = os.path.join(output_dir_path, input_filename) # Output uses original filename
+
+    # Ensure output directory exists
+    os.makedirs(output_dir_path, exist_ok=True)
+
+    # Write the translation directly to the final output file
+    print(f"Writing translated output to: {final_translated_path}")
+    with open(final_translated_path, "w", encoding='utf-8') as f: # Specify encoding
          f.write(translation)
-    return translated_filepath
+    # No return value needed as file is written directly
 
 
-def _move_files(
+def _move_input_to_completed(
     config: Config,
     current_translation_type: TypeOfTranslation,
-    input_filename: str, # Original filename from the pool
-    local_translated_filepath: str # Path to the file created by _translate_file
+    input_filename: str # Original filename from the pool
 ) -> None:
     """
-    Moves the original input file to the completed directory and the locally
-    translated file to the appropriate output directory, using paths from config.
+    Moves the original input file to the completed directory, using paths from config.
     """
     # Get directories from config
     source_dir_path = config.get_input_dir(current_translation_type)
     completed_dir_path = config.get_completed_dir(current_translation_type)
-    output_dir_path = config.get_output_dir(current_translation_type)
 
     # Define source and destination paths
     original_input_path = os.path.join(source_dir_path, input_filename)
     completed_input_path = os.path.join(completed_dir_path, input_filename)
-    final_translated_path = os.path.join(output_dir_path, input_filename) # Output uses original filename
 
-    # Ensure directories exist
+    # Ensure completed directory exists
     os.makedirs(completed_dir_path, exist_ok=True)
-    os.makedirs(output_dir_path, exist_ok=True)
 
     # Move original input file to completed
-    print(f"Moving {original_input_path} to {completed_input_path}")
-    shutil.move(original_input_path, completed_input_path)
+    if os.path.exists(original_input_path):
+        print(f"Moving {original_input_path} to {completed_input_path}")
+        try:
+            shutil.move(original_input_path, completed_input_path)
+        except Exception as e:
+            print(f"Error moving file {original_input_path} to {completed_input_path}: {e}")
+            # Decide how to handle move errors
+    else:
+        print(f"Warning: Original input file {original_input_path} not found for moving.")
 
-    # Move locally translated file to final output directory
-    print(f"Moving {local_translated_filepath} to {final_translated_path}")
-    shutil.move(local_translated_filepath, final_translated_path)
-
-    # Clean up the local input file copy?
-    local_input_filepath = os.path.basename(input_filename) # Path used in _copy_input_file_to_local
-    if os.path.exists(local_input_filepath):
-        print(f"Removing local input copy: {local_input_filepath}")
-        os.remove(local_input_filepath)
+    # Removed logic for moving local translated file and cleaning up local input copy

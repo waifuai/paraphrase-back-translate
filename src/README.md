@@ -1,84 +1,74 @@
-# Back-translation Paraphrasing with Trax
+# Back-translation Paraphrasing with Hugging Face Transformers
 
-This project implements a back-translation paraphrasing system using the Trax deep learning library. It provides a command-line interface (CLI) to perform back-translation cycles between English and French.  The core functionality involves translating text from a source language to a target language and then back to the source language, using a pre-trained Trax Transformer model.  The system manages input and output files, tracks progress with logs, and supports multiple translation cycles.  It includes a dummy translation mode for testing purposes.
+This project implements a back-translation paraphrasing system using the Hugging Face Transformers library and PyTorch. It provides a command-line interface (CLI) to perform back-translation cycles between English and French. The core functionality involves translating text from a source language to a target language and then back to the source language, using pre-trained models from the Hugging Face Hub (`Helsinki-NLP/opus-mt-*`). The system manages input and output files and tracks progress with standard Python logging.
 
 ## Project Structure
 
-The project is organized into the following files:
+The `src` directory contains the core Python modules:
 
--   **`main.py`**:  CLI entry point.  Parses command-line arguments and initiates the back-translation process.
--   **`back_translate.py`**:  Main program logic.  Calls `translate_and_log_multi_file` to handle multiple cycles.
--   **`translate_and_log_multi_file.py`**:  Manages multiple back-translation cycles, alternating translation direction (English to French, then French to English, etc.).
--   **`translate_single_file.py`**:  Handles the translation of a single file using the Trax model (or a dummy translator for testing). Includes file I/O and interaction with Trax's decoding functions.
--   **`log_single_file.py`**:  Updates a custom log (using TensorBoard) to track the progress of back-translation cycles.
--   **`update_custom_log.py`**:  Helper function to write scalar values to a TensorBoard log.
--   **`utils.py`**:  Contains utility functions for file system operations, shell command execution, random file selection, and defining the `TypeOfTranslation` enum.
+-   **`main.py`**: CLI entry point. Parses command-line arguments and initiates the back-translation process.
+-   **`back_translate.py`**: Main program logic. Calls `translate_and_log_multi_file` to handle multiple cycles.
+-   **`translate_and_log_multi_file.py`**: Manages multiple back-translation cycles, alternating translation direction (English to French, then French to English, etc.).
+-   **`translate_single_file.py`**: Handles the translation of a single file using the Hugging Face model. Includes file I/O and interaction with the Transformers library for tokenization and generation.
+-   **`log_single_file.py`**: Configures the Python logger and logs the completion of each cycle.
+-   **`update_custom_log.py`**: Helper function to log metrics using the standard Python `logging` module.
+-   **`config.py`**: Defines the `Config` dataclass holding application settings derived from CLI arguments.
+-   **`utils.py`**: Contains basic utility functions (e.g., random file selection).
+-   **`tests/`**: Contains the unit tests for the project (located outside `src` in the main project directory).
 
 ## Functionality
 
-1.  **Back-translation Cycles:** The system performs back-translation by repeatedly translating text between English and French. The number of cycles is configurable.
+1.  **Back-translation Cycles:** The system performs back-translation by repeatedly translating text between English and French using specified Hugging Face models. The number of cycles is configurable via the CLI.
 
-2.  **Translation Model:** The project utilizes a pre-trained Trax Transformer model for translation.  The model files (`model_en_fr.pkl.gz` and `model_fr_en.pkl.gz`) and vocabulary files (`vocab_en_fr.subword` and `vocab_fr_en.subword`) are expected to reside in a specified directory.
+2.  **Translation Models:** The project utilizes pre-trained sequence-to-sequence models from the Hugging Face Hub, specifically:
+    *   `Helsinki-NLP/opus-mt-en-fr` for English to French.
+    *   `Helsinki-NLP/opus-mt-fr-en` for French to English.
+    These models are downloaded automatically when the script is run if they are not already present in the local Hugging Face cache.
 
-3.  **Dummy Translation:** For testing purposes, a "dummy" translation mode can be activated by setting the model directory to "dummy". In this mode, the text is simply reversed instead of being translated.
+3.  **File Management:**
+    *   Input files (`.txt`) are selected randomly from an input pool directory (`data/pooling/input_pool` for English, `data/pooling/french_pool` for French, relative to the main project directory).
+    *   After processing, the original input file is moved to a corresponding "completed" directory (e.g., `data/pooling/input_pool_completed`).
+    *   Translated files are written directly to the appropriate output directory (`data/pooling/french_pool` for en->fr, `data/pooling/output_pool` for fr->en), using the same filename as the original input.
 
-4.  **File Management:**
-    -   Input files are selected randomly from an "input pool" directory (`data/pooling/input_pool` for English, `data/pooling/french_pool` for French).
-    -   After translation, input files are moved to a "completed" directory (e.g., `data/pooling/input_pool_completed`).
-    -   Translated files are placed in the output directory (`data/pooling/french_pool` for English to French, `data/pooling/output_pool` for French to English).
-    - The file structure is relative to the project directory.
+4.  **Logging:** The system logs information about the process, including cycle completion and potential errors, using the standard Python `logging` module. Logs are written to `logs/backtranslate.log` (relative to the main project directory).
 
-5.  **Logging:** The system tracks the number of completed back-translation cycles. A counter is stored in `logs/cycle_count.txt`, and a TensorBoard log is updated to visualize progress.
-
-6. **CLI:** The command line interface allows users to control the following.
-    -   `--cycles`: Number of back-translation cycles (default: 1).
-    -   `--translation-type`: Initial translation direction ("en_to_fr" or "fr_to_en", default: "en_to_fr").
-    -   `--pooling-dir`: Directory for input and output files (default: "./data/pooling").
-    -   `--model-dir`: Directory for model and vocabulary files (default: "./models"). Use "dummy" for dummy translation mode.
-    -   `--log-dir`: Directory for logs (default: "./logs").
+5.  **CLI:** The command-line interface (`main.py`) allows users to control:
+    *   `--cycles`: Number of back-translation cycles (default: 1).
+    *   `--translation-type`: Initial translation direction ("en_to_fr" or "fr_to_en", default: "en_to_fr").
+    *   `--pooling-dir`: Base directory containing the input/output/completed subdirectories (default: "./data/pooling").
+    *   `--log-dir`: Directory for the log file (default: "./logs").
 
 ## Setup and Usage
 
-1.  **Dependencies:**  This project uses Trax and TensorFlow.  Ensure these libraries are installed.
+Refer to the main `README.md` in the project root for detailed setup instructions (virtual environment creation, dependency installation using `uv`).
 
-2.  **Directory Structure:**
-    -   Create the following directories:
-        -   `data/pooling/input_pool`:  Place initial English text files here.
-        -   `data/pooling/french_pool`:  (Initially empty, will contain French translations).
-        -   `data/pooling/output_pool`: (Will contain final paraphrased text).
-        -   `data/pooling/input_pool_completed`: (Input files moved here after processing.)
-        -   `data/pooling/french_pool_completed`: (French files moved here after processing.)
-        -   `models`:  Place your Trax model files (`model_en_fr.pkl.gz`, `model_fr_en.pkl.gz`, `vocab_en_fr.subword`, `vocab_fr_en.subword`) here.
-        -   `logs`:  (Will contain log files).
+1.  **Directory Structure:** Ensure the required pooling directories exist within the directory specified by `--pooling-dir` (defaults to `./data/pooling`):
+    *   `input_pool/` (with initial English `.txt` files)
+    *   `french_pool/` (can be initially empty)
+    *   `output_pool/` (can be initially empty)
+    *   `input_pool_completed/` (created automatically if needed)
+    *   `french_pool_completed/` (created automatically if needed)
+    The log directory (`./logs` by default) is created automatically.
 
-3.  **Running the script:**
+2.  **Running the script:** Execute `main.py` as a module from the project root directory, using the Python interpreter from your activated virtual environment:
 
     ```bash
-    python src/main.py --cycles <num_cycles> --translation-type <en_to_fr|fr_to_en> --pooling-dir <pooling_dir> --model-dir <model_dir> --log-dir <log_dir>
+    # Example: Run 3 cycles, starting en->fr, using default dirs
+    .venv/Scripts/python.exe -m src.main --cycles 3 --translation-type en_to_fr
     ```
 
-    -   Replace `<num_cycles>` with the desired number of cycles (e.g., 2).
-    -   Choose `en_to_fr` or `fr_to_en` for the initial translation direction.
-    -   Specify the correct paths for `pooling_dir`, `model_dir`, and `log_dir` if they differ from the defaults.
-    - For testing with the dummy translator, use `--model-dir dummy`
+    Adjust `--cycles`, `--translation-type`, `--pooling-dir`, and `--log-dir` as needed.
 
-    Example:
-    ```bash
-    python src/main.py --cycles 3 --translation-type en_to_fr --model-dir models
-    ```
-
-4.  **Output:**  After execution, the final paraphrased text files will be in the `data/pooling/output_pool` directory.  The `logs` directory will contain the `cycle_count.txt` file and TensorBoard log files.
+3.  **Output:** After execution, the final paraphrased text files (after the last fr->en step) will be in the `output_pool` directory. Intermediate French translations will be in the `french_pool`. Processed input files will be moved to the `_completed` directories. Logs will be in `logs/backtranslate.log`.
 
 ## Error Handling
 
--   The script raises a `FileNotFoundError` if the specified model files are not found in the `model_dir`.
--   A `RuntimeError` is raised if the input directory is empty.
--   Shell commands are executed with `check=True`, raising an exception on failure.
+-   The script will raise an `OSError` if the required Hugging Face models cannot be downloaded (e.g., due to network issues or invalid model names).
+-   A `RuntimeError` is raised by `utils.get_random_file_from_dir` if an input directory is empty when a file is needed.
+-   Errors during translation or file moving are logged. Translation errors result in a file containing an error message being written to the output directory.
 
 ## Notes
 
-- This README provides a high-level overview of the project. Refer to the docstrings within the code for more detailed information about individual functions and classes.
-- The file structure and default paths are relative, assuming the script is run from the project's root directory.
-- This system relies on pre-trained Trax models, which need to be obtained separately.
-- The dummy translation mode is useful for verifying the file handling and logging logic without requiring a real translation model.
-- The logging mechanism uses TensorFlow's summary writer, allowing visualization of the progress in TensorBoard.
+- This README provides an overview specific to the `src` directory modules. See the main project `README.md` for overall project information.
+- File paths for pooling and logs are relative to the project root directory where the command is run.
+- The script uses `torch` and attempts to use a CUDA GPU if available and correctly configured in the environment. Otherwise, it falls back to CPU.

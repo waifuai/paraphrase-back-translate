@@ -14,7 +14,7 @@ class TestTranslateAndLogMultiFile(unittest.TestCase):
             cycles=1, # Not used by single cycle func
             initial_translation_type_str="en_to_fr", # Not used directly here
             pooling_dir="pool",
-            model_dir="model",
+            # model_dir="model", # Removed
             log_dir="log",
         )
         current_type = TypeOfTranslation.en_to_fr
@@ -41,7 +41,7 @@ class TestTranslateAndLogMultiFile(unittest.TestCase):
             cycles=2,
             initial_translation_type_str="en_to_fr",
             pooling_dir="pool",
-            model_dir="model",
+            # model_dir="model", # Removed
             log_dir="log",
         )
 
@@ -67,7 +67,7 @@ class TestTranslateAndLogMultiFile(unittest.TestCase):
             cycles=0,
             initial_translation_type_str="en_to_fr",
             pooling_dir="pool",
-            model_dir="model",
+            # model_dir="model", # Removed
             log_dir="log",
         )
         talmf.translate_and_log_multi_file(config=test_config_0_cycles)

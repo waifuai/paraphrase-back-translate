@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-CLI entry point for back-translation paraphrasing using Trax.
+CLI entry point for back-translation paraphrasing using Hugging Face Transformers.
 """
 
 import argparse
@@ -9,7 +9,7 @@ from config import Config # Import the Config class
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Back-translation paraphrasing CLI using Trax."
+        description="Back-translation paraphrasing CLI using Hugging Face Transformers."
     )
     parser.add_argument(
         "--cycles", type=int, default=1, help="Number of back-translation cycles."
@@ -26,13 +26,14 @@ def parse_args():
         default="./data/pooling",
         help="Directory containing input and output files.",
     )
-    parser.add_argument(
-        "--model-dir",
-        type=str,
-        default="./models",
-        help=("Directory containing the translation model and vocabulary files. " 
-              "For testing, you may use 'dummy' to trigger a dummy translator."),
-    )
+    # Removed --model-dir argument
+    # parser.add_argument(
+    #     "--model-dir",
+    #     type=str,
+    #     default="./models",
+    #     help=("Directory containing the translation model and vocabulary files. "
+    #           "For testing, you may use 'dummy' to trigger a dummy translator."),
+    # )
     parser.add_argument(
         "--log-dir",
         type=str,
@@ -48,7 +49,7 @@ def main_cli():
         cycles=args.cycles,
         initial_translation_type_str=args.translation_type,
         pooling_dir=args.pooling_dir,
-        model_dir=args.model_dir,
+        # model_dir=args.model_dir, # Removed
         log_dir=args.log_dir,
         # local_base_dir defaults to "." in Config class
     )
