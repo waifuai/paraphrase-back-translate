@@ -1,17 +1,19 @@
 """
-Translates a single file using a specified Hugging Face translation model.
+Translates a single file using the specified Gemini API model.
 """
 
 import os
 import shutil
+import logging
+import google.generativeai as genai
 import utils # Keep for get_random_file_from_dir
-import torch
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from config import Config, TypeOfTranslation # Import Config and Enum
 
-# Determine device
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {DEVICE}")
+# Configure logging for this module
+logger = logging.getLogger(__name__)
+
+# --- Gemini Client Configuration ---
+# Client is configured dynamically within _translate_file using the API key from Config
 
 def translate_single_file(
     config: Config,
@@ -19,21 +21,18 @@ def translate_single_file(
 ) -> None:
     """
     Translates a single file based on the provided configuration and cycle type
-    using Hugging Face Transformers.
+    using the Gemini API.
 
     Args:
-        config: The configuration object.
+        config: The configuration object, containing API key and model name.
         current_translation_type: The direction for this specific cycle.
     """
     # --- Main Logic ---
     input_filename = _get_input_file(config, current_translation_type)
     input_filepath = os.path.join(config.get_input_dir(current_translation_type), input_filename)
 
-    # Load model and tokenizer
-    model, tokenizer = _load_hf_model_and_tokenizer(config, current_translation_type)
-
-    # Translate file directly from input pool to output pool
-    _translate_file(config, model, tokenizer, input_filepath, input_filename, current_translation_type)
+    # Translate file directly from input pool to output pool using Gemini
+    _translate_file_with_gemini(config, input_filepath, input_filename, current_translation_type)
 
     # Move the original input file to completed directory
     _move_input_to_completed(config, current_translation_type, input_filename)
@@ -42,96 +41,114 @@ def translate_single_file(
 def _get_input_file(config: Config, current_translation_type: TypeOfTranslation) -> str:
     """Returns the filename of a random input file based on the translation type."""
     input_dir = config.get_input_dir(current_translation_type)
-    # Returns just the filename, not the full path
-    return utils.get_random_file_from_dir(input_dir)
-
-
-# Removed _copy_input_file_to_local
-# Removed _is_model_present
-
-
-def _load_hf_model_and_tokenizer(config: Config, current_translation_type: TypeOfTranslation):
-    """
-    Loads the Hugging Face translation model and tokenizer based on config.
-    Moves the model to the appropriate device (GPU if available).
-    """
-    # Removed dummy model logic
-    model_name = config.get_hf_model_name(current_translation_type)
-    print(f"Loading model and tokenizer: {model_name}")
-
+    logger.info(f"Looking for input file in: {input_dir}")
     try:
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-        model.to(DEVICE) # Move model to GPU if available
-        print(f"Model {model_name} loaded successfully on {DEVICE}.")
-        return model, tokenizer
-    except OSError as e:
-        print(f"Error loading model {model_name}. Check model name and internet connection.")
-        raise e
+        filename = utils.get_random_file_from_dir(input_dir)
+        logger.info(f"Selected input file: {filename}")
+        return filename
+    except RuntimeError as e:
+        logger.error(f"Error getting input file: {e}")
+        raise # Re-raise the error to stop the process if no input file found
 
 
-def _translate_file(
+# Removed _load_hf_model_and_tokenizer
+
+def _translate_file_with_gemini(
     config: Config,
-    model,
-    tokenizer,
     input_filepath: str,
     input_filename: str, # Needed for output filename
     current_translation_type: TypeOfTranslation
 ) -> None:
     """
-    Performs the translation using the loaded Hugging Face model and tokenizer.
+    Performs the translation using the Gemini API.
     Reads directly from the input file path and writes directly to the final output path.
 
     Args:
-        config: The configuration object.
-        model: The loaded Hugging Face model.
-        tokenizer: The loaded Hugging Face tokenizer.
+        config: The configuration object (contains API key, model name).
         input_filepath: Full path to the input file in the source pool.
         input_filename: Original filename (used for output).
         current_translation_type: The direction for this cycle.
     """
-    print(f"Translating file: {input_filepath}")
+    logger.info(f"Translating file using Gemini: {input_filepath}")
+
+    # 1. Configure Gemini API Client
     try:
-        with open(input_filepath, "r", encoding='utf-8') as f: # Specify encoding
+        genai.configure(api_key=config.api_key)
+        model = genai.GenerativeModel(config.gemini_model_name)
+        logger.info(f"Gemini client configured with model: {config.gemini_model_name}")
+    except Exception as e:
+        logger.error(f"Failed to configure Gemini client: {e}")
+        # Write error message to output file and return
+        _write_translation_output(config, input_filename, current_translation_type, f"GEMINI_CONFIG_ERROR: {e}")
+        return
+
+    # 2. Read Input Text
+    try:
+        with open(input_filepath, "r", encoding='utf-8') as f:
              input_text = f.read()
+        if not input_text.strip():
+            logger.warning(f"Input file {input_filename} is empty or contains only whitespace. Skipping translation.")
+            translation = "" # Write empty file for empty input
+            _write_translation_output(config, input_filename, current_translation_type, translation)
+            return
     except FileNotFoundError:
-        print(f"Error: Input file not found at {input_filepath}")
-        # Or raise the error depending on desired behavior
-        raise
+        logger.error(f"Input file not found at {input_filepath} during translation attempt.")
+        # Write error message to output file and return
+        _write_translation_output(config, input_filename, current_translation_type, f"FILE_NOT_FOUND_ERROR: {input_filepath}")
+        return
+    except Exception as e:
+        logger.error(f"Error reading input file {input_filepath}: {e}")
+        _write_translation_output(config, input_filename, current_translation_type, f"FILE_READ_ERROR: {e}")
+        return
 
-    if not input_text.strip():
-        print("Input file is empty or contains only whitespace. Skipping translation.")
-        translation = ""
-    else:
-        try:
-            # Tokenize
-            inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True, max_length=512).to(DEVICE) # Move inputs to device
+    # 3. Construct Prompt
+    source_lang = "English" if current_translation_type == TypeOfTranslation.en_to_fr else "French"
+    target_lang = "French" if current_translation_type == TypeOfTranslation.en_to_fr else "English"
+    prompt = f"Translate the following {source_lang} text to {target_lang}:\n\n{input_text}"
 
-            # Generate translation
-            # Adjust generation parameters as needed (e.g., max_length, num_beams)
-            translated_tokens = model.generate(**inputs, max_length=512)
+    # 4. Call Gemini API
+    translation = ""
+    try:
+        logger.info(f"Sending request to Gemini API for file: {input_filename}")
+        response = model.generate_content(prompt)
+        # Check for safety ratings or blocks if necessary
+        if response.parts:
+             translation = response.text # Access the text part directly
+             logger.info(f"Translation successful for file: {input_filename}")
+        else:
+             # Handle cases where the response might be blocked or empty
+             logger.warning(f"Gemini response for {input_filename} was empty or blocked. Safety ratings: {response.prompt_feedback}")
+             translation = f"GEMINI_RESPONSE_EMPTY_OR_BLOCKED: Prompt Feedback: {response.prompt_feedback}"
 
-            # Decode
-            translation = tokenizer.decode(translated_tokens[0], skip_special_tokens=True)
-            print(f"Translation successful.")
+    except Exception as e:
+        logger.error(f"Error during Gemini API call for {input_filename}: {e}")
+        translation = f"GEMINI_API_ERROR: {e}"
 
-        except Exception as e:
-            print(f"Error during translation of {input_filename}: {e}")
-            # Decide how to handle translation errors (e.g., write empty file, skip, raise)
-            translation = f"TRANSLATION_ERROR: {e}" # Example: Write error message
+    # 5. Write Output
+    _write_translation_output(config, input_filename, current_translation_type, translation)
 
-    # Determine final output path
+
+def _write_translation_output(
+    config: Config,
+    input_filename: str,
+    current_translation_type: TypeOfTranslation,
+    translation: str
+) -> None:
+    """Helper function to write the translation (or error message) to the output file."""
     output_dir_path = config.get_output_dir(current_translation_type)
     final_translated_path = os.path.join(output_dir_path, input_filename) # Output uses original filename
 
     # Ensure output directory exists
     os.makedirs(output_dir_path, exist_ok=True)
 
-    # Write the translation directly to the final output file
-    print(f"Writing translated output to: {final_translated_path}")
-    with open(final_translated_path, "w", encoding='utf-8') as f: # Specify encoding
-         f.write(translation)
-    # No return value needed as file is written directly
+    # Write the translation/error directly to the final output file
+    logger.info(f"Writing output to: {final_translated_path}")
+    try:
+        with open(final_translated_path, "w", encoding='utf-8') as f:
+             f.write(translation)
+    except Exception as e:
+        logger.error(f"Error writing output file {final_translated_path}: {e}")
+        # Log the error, but the process might continue with the next file
 
 
 def _move_input_to_completed(
@@ -155,13 +172,13 @@ def _move_input_to_completed(
 
     # Move original input file to completed
     if os.path.exists(original_input_path):
-        print(f"Moving {original_input_path} to {completed_input_path}")
+        logger.info(f"Moving {original_input_path} to {completed_input_path}")
         try:
             shutil.move(original_input_path, completed_input_path)
         except Exception as e:
-            print(f"Error moving file {original_input_path} to {completed_input_path}: {e}")
-            # Decide how to handle move errors
+            logger.error(f"Error moving file {original_input_path} to {completed_input_path}: {e}")
+            # Log the error, but allow the cycle to potentially continue
     else:
-        print(f"Warning: Original input file {original_input_path} not found for moving.")
+        logger.warning(f"Original input file {original_input_path} not found for moving (might have been processed already or deleted).")
 
     # Removed logic for moving local translated file and cleaning up local input copy

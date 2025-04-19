@@ -1,10 +1,14 @@
 """
-Configuration management for the back-translation project.
+Configuration management for the back-translation project using Gemini API.
 """
 
 import os
 from dataclasses import dataclass, field
 from enum import Enum
+import logging
+
+# Configure logging for this module
+logger = logging.getLogger(__name__)
 
 class TypeOfTranslation(Enum):
     """Represents the direction of translation."""
@@ -17,17 +21,18 @@ class Config:
     cycles: int
     initial_translation_type_str: str # "en_to_fr" or "fr_to_en"
     pooling_dir: str
-    # model_dir: str # Removed - Using HF model names directly
     log_dir: str
-    local_base_dir: str = "." # Keep local base dir for now, might simplify later
+    local_base_dir: str = "."
+    gemini_model_name: str = "gemini-2.5-flash-preview-04-17" # Default Gemini model, updated name
+    api_key_path: str = "~/.api-gemini" # Path to the API key file
 
     # --- Derived properties ---
-    # use_dummy_model: bool = field(init=False) # Removed - No dummy model logic
     initial_translation_type: TypeOfTranslation = field(init=False)
+    api_key: str = field(init=False)
 
     def __post_init__(self):
-        """Calculate derived properties after initialization."""
-        # self.use_dummy_model = self.model_dir.lower() == "dummy" # Removed
+        """Calculate derived properties and load API key after initialization."""
+        # Determine initial translation type
         if self.initial_translation_type_str == "en_to_fr":
             self.initial_translation_type = TypeOfTranslation.en_to_fr
         elif self.initial_translation_type_str == "fr_to_en":
@@ -35,6 +40,26 @@ class Config:
         else:
             # This should ideally be caught by argparse choices, but good to have defense
             raise ValueError(f"Invalid translation_type: {self.initial_translation_type_str}")
+
+        # Load API Key
+        self._load_api_key()
+
+    def _load_api_key(self):
+        """Loads the Gemini API key from the specified file path."""
+        expanded_path = os.path.expanduser(self.api_key_path)
+        logger.info(f"Attempting to load Gemini API key from: {expanded_path}")
+        try:
+            with open(expanded_path, "r", encoding='utf-8') as f:
+                self.api_key = f.read().strip()
+            if not self.api_key:
+                raise ValueError("API key file is empty.")
+            logger.info("Gemini API key loaded successfully.")
+        except FileNotFoundError:
+            logger.error(f"Error: API key file not found at {expanded_path}")
+            raise FileNotFoundError(f"API key file not found at {expanded_path}. Please create it and add your key.")
+        except Exception as e:
+            logger.error(f"Error reading API key file {expanded_path}: {e}")
+            raise e
 
     # --- Path generation methods ---
 
@@ -56,29 +81,14 @@ class Config:
         completed_pool = f"{self._get_pool_name(translation_type)}_completed"
         return os.path.join(self.pooling_dir, completed_pool)
 
-    # --- HF Model Name Method ---
-    def get_hf_model_name(self, translation_type: TypeOfTranslation) -> str:
-        """Returns the Hugging Face model identifier for the given translation type."""
-        if translation_type == TypeOfTranslation.en_to_fr:
-            return "Helsinki-NLP/opus-mt-en-fr"
-        else: # fr_to_en
-            return "Helsinki-NLP/opus-mt-fr-en"
-
-    # Removed get_model_filename, get_model_filepath, get_vocab_filename, get_vocab_filepath
-
     @property
-    def cycle_counter_filepath(self) -> str:
-        """Returns the absolute path to the cycle counter file."""
-        # Uses local_base_dir for log path construction as before
+    def log_filepath(self) -> str:
+        """Returns the absolute path to the log file."""
+        # Uses local_base_dir for log path construction
         local_log_dir = os.path.join(self.local_base_dir, self.log_dir)
         # Ensure log directory exists before returning path
         os.makedirs(local_log_dir, exist_ok=True)
-        return os.path.join(local_log_dir, "cycle_count.txt")
+        return os.path.join(local_log_dir, "backtranslate.log")
 
-    @property
-    def local_log_dir_path(self) -> str:
-        """Returns the absolute path to the local log directory."""
-        path = os.path.join(self.local_base_dir, self.log_dir)
-        # Ensure log directory exists before returning path
-        os.makedirs(path, exist_ok=True)
-        return path
+    # Removed cycle_counter_filepath property as cycle counting is now in-memory in log_single_file
+    # Removed local_log_dir_path property, log_filepath handles directory creation
