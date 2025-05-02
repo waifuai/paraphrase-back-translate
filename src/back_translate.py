@@ -35,7 +35,7 @@ def main(config: Config):
 #             pooling_dir="./data/pooling",
 #             log_dir="./logs",
 #             # api_key_path="~/.api-gemini" # Default path
-#             # gemini_model_name="gemini-2.5-flash-preview-04-17" # Default model
+#             # gemini_model_name="gemini-2.5-pro-preview-03-25" # Default model
 #         )
 #         # Setup basic logging if run directly
 #         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
