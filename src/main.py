@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument(
         "--gemini-model",
         type=str,
-        default="gemini-2.5-pro-preview-03-25", # Default from Config
+        default="gemini-2.5-pro-preview-05-06", # Default from Config
         help="Name of the Gemini model to use for translation.",
     )
     parser.add_argument(

@@ -18,7 +18,7 @@ This project performs back-translation for paraphrase generation using the Googl
 
 ## Model Information
 
-This version uses the Google Gemini API for translation. You can specify the model name via the command line (default: `gemini-2.5-pro-preview-03-25`). Access requires a Gemini API key.
+This version uses the Google Gemini API for translation. You can specify the model name via the command line (default: `gemini-2.5-pro-preview-05-06`). Access requires a Gemini API key.
 
 ## Installation
 
@@ -84,7 +84,7 @@ Run the CLI from the project root directory using the Python interpreter from th
 *   `--translation-type`: Initial translation direction (`en_to_fr` or `fr_to_en`, default: `en_to_fr`).
 *   `--pooling-dir`: Directory containing the `input_pool`, `french_pool`, etc. subdirectories (default: `./data/pooling`).
 *   `--log-dir`: Directory where log files will be created (default: `./logs`).
-*   `--gemini-model`: Name of the Gemini model to use (default: `gemini-2.5-pro-preview-03-25`).
+*   `--gemini-model`: Name of the Gemini model to use (default: `gemini-2.5-pro-preview-05-06`).
 *   `--api-key-path`: Path to the file containing your Gemini API key (default: `~/.api-gemini`).
 
 The script will randomly select a file from the appropriate input pool (`input_pool` for `en_to_fr`, `french_pool` for `fr_to_en`), translate it using the Gemini API, move the original to the corresponding `_completed` directory, and place the translated file in the output pool (`french_pool` for `en_to_fr`, `output_pool` for `fr_to_en`). This process repeats, alternating the translation direction for the specified number of cycles. Log messages indicating progress and any errors will be printed to the console and saved in the file specified by `--log-dir` (default: `./logs/backtranslate.log`).
