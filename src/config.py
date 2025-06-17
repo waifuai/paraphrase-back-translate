@@ -23,7 +23,7 @@ class Config:
     pooling_dir: str
     log_dir: str
     local_base_dir: str = "."
-    gemini_model_name: str = "gemini-2.5-pro-preview-05-06" # Default Gemini model, updated name
+    gemini_model_name: str = "gemini-2.5-pro" # Default Gemini model, updated name
     api_key_path: str = "~/.api-gemini" # Path to the API key file
 
     # --- Derived properties ---
