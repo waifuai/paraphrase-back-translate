@@ -5,9 +5,9 @@ Translates a single file using the specified Gemini API model.
 import os
 import shutil
 import logging
-import google.generativeai as genai
+from google import genai
 import utils # Keep for get_random_file_from_dir
-from config import Config, TypeOfTranslation # Import Config and Enum
+from config import Config, TypeOfTranslation, DEFAULT_GEMINI_MODEL # Import Config and Enum
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
@@ -51,8 +51,6 @@ def _get_input_file(config: Config, current_translation_type: TypeOfTranslation)
         raise # Re-raise the error to stop the process if no input file found
 
 
-# Removed _load_hf_model_and_tokenizer
-
 def _translate_file_with_gemini(
     config: Config,
     input_filepath: str,
@@ -71,14 +69,13 @@ def _translate_file_with_gemini(
     """
     logger.info(f"Translating file using Gemini: {input_filepath}")
 
-    # 1. Configure Gemini API Client
+    # 1. Configure Google GenAI Client
     try:
-        genai.configure(api_key=config.api_key)
-        model = genai.GenerativeModel(config.gemini_model_name)
-        logger.info(f"Gemini client configured with model: {config.gemini_model_name}")
+        client = genai.Client(api_key=config.api_key)
+        model_name = config.gemini_model_name or DEFAULT_GEMINI_MODEL
+        logger.info(f"GenAI client initialized with model: {model_name}")
     except Exception as e:
-        logger.error(f"Failed to configure Gemini client: {e}")
-        # Write error message to output file and return
+        logger.error(f"Failed to initialize GenAI client: {e}")
         _write_translation_output(config, input_filename, current_translation_type, f"GEMINI_CONFIG_ERROR: {e}")
         return
 
@@ -93,7 +90,6 @@ def _translate_file_with_gemini(
             return
     except FileNotFoundError:
         logger.error(f"Input file not found at {input_filepath} during translation attempt.")
-        # Write error message to output file and return
         _write_translation_output(config, input_filename, current_translation_type, f"FILE_NOT_FOUND_ERROR: {input_filepath}")
         return
     except Exception as e:
@@ -106,22 +102,29 @@ def _translate_file_with_gemini(
     target_lang = "French" if current_translation_type == TypeOfTranslation.en_to_fr else "English"
     prompt = f"Translate the following {source_lang} text to {target_lang}:\n\n{input_text}"
 
-    # 4. Call Gemini API
+    # 4. Call Gemini API via google-genai SDK
     translation = ""
     try:
         logger.info(f"Sending request to Gemini API for file: {input_filename}")
-        response = model.generate_content(prompt)
-        # Check for safety ratings or blocks if necessary
-        if response.parts:
-             translation = response.text # Access the text part directly
-             logger.info(f"Translation successful for file: {input_filename}")
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt
+        )
+        # The new SDK returns text on response.output_text
+        if hasattr(response, "output_text") and response.output_text:
+            translation = response.output_text
+            logger.info(f"Translation successful for file: {input_filename}")
         else:
-             # Handle cases where the response might be blocked or empty
-             logger.warning(f"Gemini response for {input_filename} was empty or blocked. Safety ratings: {response.prompt_feedback}")
-             translation = f"GEMINI_RESPONSE_EMPTY_OR_BLOCKED: Prompt Feedback: {response.prompt_feedback}"
-
+            # Fallback attempts for robustness across SDK minor versions
+            text_candidate = getattr(response, "text", "") or getattr(response, "candidates", "")
+            if text_candidate:
+                translation = str(text_candidate)
+                logger.info(f"Translation extracted via fallback field for file: {input_filename}")
+            else:
+                logger.warning(f"GenAI response for {input_filename} was empty or blocked. Raw response present but no text.")
+                translation = "GEMINI_RESPONSE_EMPTY_OR_BLOCKED"
     except Exception as e:
-        logger.error(f"Error during Gemini API call for {input_filename}: {e}")
+        logger.error(f"Error during GenAI API call for {input_filename}: {e}")
         translation = f"GEMINI_API_ERROR: {e}"
 
     # 5. Write Output
@@ -180,5 +183,3 @@ def _move_input_to_completed(
             # Log the error, but allow the cycle to potentially continue
     else:
         logger.warning(f"Original input file {original_input_path} not found for moving (might have been processed already or deleted).")
-
-    # Removed logic for moving local translated file and cleaning up local input copy

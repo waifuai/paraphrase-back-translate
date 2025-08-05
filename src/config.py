@@ -15,6 +15,8 @@ class TypeOfTranslation(Enum):
     en_to_fr = 1
     fr_to_en = 2
 
+DEFAULT_GEMINI_MODEL = "gemini-2.5-pro"
+
 @dataclass
 class Config:
     """Holds all configuration parameters for the back-translation process."""
@@ -23,7 +25,7 @@ class Config:
     pooling_dir: str
     log_dir: str
     local_base_dir: str = "."
-    gemini_model_name: str = "gemini-2.5-pro" # Default Gemini model, updated name
+    gemini_model_name: str = DEFAULT_GEMINI_MODEL # Default Gemini model, updated name
     api_key_path: str = "~/.api-gemini" # Path to the API key file
 
     # --- Derived properties ---
@@ -45,7 +47,18 @@ class Config:
         self._load_api_key()
 
     def _load_api_key(self):
-        """Loads the Gemini API key from the specified file path."""
+        """
+        Loads the Gemini API key with the following precedence:
+        1) Environment variable GEMINI_API_KEY
+        2) Environment variable GOOGLE_API_KEY
+        3) Fallback: contents of the file at api_key_path (default ~/.api-gemini)
+        """
+        env_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if env_key and env_key.strip():
+            self.api_key = env_key.strip()
+            logger.info("Gemini API key loaded from environment variable.")
+            return
+
         expanded_path = os.path.expanduser(self.api_key_path)
         logger.info(f"Attempting to load Gemini API key from: {expanded_path}")
         try:
@@ -53,10 +66,13 @@ class Config:
                 self.api_key = f.read().strip()
             if not self.api_key:
                 raise ValueError("API key file is empty.")
-            logger.info("Gemini API key loaded successfully.")
+            logger.info("Gemini API key loaded successfully from file.")
         except FileNotFoundError:
-            logger.error(f"Error: API key file not found at {expanded_path}")
-            raise FileNotFoundError(f"API key file not found at {expanded_path}. Please create it and add your key.")
+            logger.error(f"Error: API key not found in environment and file not found at {expanded_path}")
+            raise FileNotFoundError(
+                f"API key not found in environment and file not found at {expanded_path}. "
+                "Set GEMINI_API_KEY or GOOGLE_API_KEY, or create the key file."
+            )
         except Exception as e:
             logger.error(f"Error reading API key file {expanded_path}: {e}")
             raise e
