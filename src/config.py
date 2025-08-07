@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
+from pathlib import Path
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
@@ -16,6 +17,15 @@ class TypeOfTranslation(Enum):
     fr_to_en = 2
 
 DEFAULT_GEMINI_MODEL = "gemini-2.5-pro"
+DEFAULT_OPENROUTER_MODEL = "openrouter/horizon-beta"
+
+MODEL_FILE_GEMINI = Path.home() / ".model-gemini"
+MODEL_FILE_OPENROUTER = Path.home() / ".model-openrouter"
+
+class Provider(str, Enum):
+    """Supported providers for model selection."""
+    openrouter = "openrouter"
+    gemini = "gemini"
 
 @dataclass
 class Config:
@@ -25,12 +35,17 @@ class Config:
     pooling_dir: str
     log_dir: str
     local_base_dir: str = "."
-    gemini_model_name: str = DEFAULT_GEMINI_MODEL # Default Gemini model, updated name
-    api_key_path: str = "~/.api-gemini" # Path to the API key file
+    # Back-compat: gemini specific override if no common model provided and provider == gemini
+    gemini_model_name: str = DEFAULT_GEMINI_MODEL
+    api_key_path: str = "~/.api-gemini" # Path to the API key file for Gemini
+    # New provider and model fields
+    provider: Provider = Provider.openrouter  # Default provider switched to OpenRouter
+    model_name: str | None = None            # Common model override (applies to any provider)
 
     # --- Derived properties ---
     initial_translation_type: TypeOfTranslation = field(init=False)
     api_key: str = field(init=False)
+    resolved_model_name: str = field(init=False)
 
     def __post_init__(self):
         """Calculate derived properties and load API key after initialization."""
@@ -43,8 +58,50 @@ class Config:
             # This should ideally be caught by argparse choices, but good to have defense
             raise ValueError(f"Invalid translation_type: {self.initial_translation_type_str}")
 
-        # Load API Key
+        # Resolve model name per provider with dotfile fallbacks
+        self.resolved_model_name = self._resolve_model_name()
+
+        # Load API Key (Gemini path remains unchanged; translation still uses Gemini SDK)
         self._load_api_key()
+
+    # --- Provider/model resolution ---
+
+    def _resolve_model_name(self) -> str:
+        """
+        Resolve the model name based on:
+        1) Explicit model_name if provided
+        2) Provider-specific model file in the user's home directory
+           - ~/.model-openrouter for provider=openrouter
+           - ~/.model-gemini for provider=gemini
+        3) Provider-specific default
+        4) Back-compat: if provider=gemini and no explicit/common model, use gemini_model_name field
+        """
+        # 1) Explicit override takes precedence
+        if self.model_name and str(self.model_name).strip():
+            return str(self.model_name).strip()
+
+        # 2) Provider-specific model files
+        try:
+            if self.provider == Provider.openrouter:
+                if MODEL_FILE_OPENROUTER.is_file():
+                    content = MODEL_FILE_OPENROUTER.read_text(encoding="utf-8").strip()
+                    if content:
+                        return content
+            elif self.provider == Provider.gemini:
+                if MODEL_FILE_GEMINI.is_file():
+                    content = MODEL_FILE_GEMINI.read_text(encoding="utf-8").strip()
+                    if content:
+                        return content
+        except Exception as e:
+            # Non-fatal; fall through to defaults
+            logger.debug(f"Failed to read provider model file: {e}")
+
+        # 3) Back-compat for Gemini: prefer gemini_model_name if provider is gemini
+        if self.provider == Provider.gemini and (self.gemini_model_name and self.gemini_model_name.strip()):
+            return self.gemini_model_name.strip()
+
+        # 4) Provider-specific defaults
+        return DEFAULT_OPENROUTER_MODEL if self.provider == Provider.openrouter else DEFAULT_GEMINI_MODEL
 
     def _load_api_key(self):
         """

@@ -5,9 +5,10 @@ CLI entry point for back-translation paraphrasing using the Gemini API.
 
 import argparse
 import logging
-from back_translate import main
-from config import Config # Import the Config class
-from log_single_file import setup_logging # Import setup_logging
+# Adjust imports to be package-relative so `python -m src.main` works reliably
+from .back_translate import main
+from .config import Config, Provider  # Import the Config class and Provider enum
+from .log_single_file import setup_logging  # Import setup_logging
 
 # Configure basic logging for the main script entry point
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -38,11 +39,26 @@ def parse_args():
         default="./logs",
         help="Directory for logging cycle progress.",
     )
+    # Common provider-agnostic model override
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model name override for the selected provider (if omitted, resolved from ~/.model-openrouter or ~/.model-gemini or provider default).",
+    )
+    # Back-compat flag for Gemini users
     parser.add_argument(
         "--gemini-model",
         type=str,
-        default="gemini-2.5-pro", # Default from Config
-        help="Name of the Gemini model to use for translation.",
+        default="gemini-2.5-pro", # Default from Config for backward compatibility
+        help="Name of the Gemini model to use for translation (used when --provider gemini and --model not provided).",
+    )
+    # New provider selector; default switched to openrouter
+    parser.add_argument(
+        "--provider",
+        choices=[p.value for p in Provider],
+        default=Provider.openrouter.value,
+        help="Provider selection for model resolution (translation currently uses Gemini SDK; this controls model resolution only).",
     )
     parser.add_argument(
         "--api-key-path",
@@ -63,6 +79,8 @@ def main_cli():
             log_dir=args.log_dir,
             gemini_model_name=args.gemini_model,
             api_key_path=args.api_key_path,
+            provider=Provider(args.provider),
+            model_name=args.model,
             # local_base_dir defaults to "." in Config class
         )
 
@@ -72,7 +90,7 @@ def main_cli():
         # The _logger_configured flag in log_single_file prevents duplicate handlers.
         setup_logging(config.log_filepath)
 
-        logger.info("Configuration loaded successfully. Starting back-translation process.")
+        logger.info(f"Configuration loaded successfully. Provider: {config.provider.value}, Model: {config.resolved_model_name}. Starting back-translation process.")
         # Pass the single config object
         main(config=config)
         logger.info("Back-translation process completed.")

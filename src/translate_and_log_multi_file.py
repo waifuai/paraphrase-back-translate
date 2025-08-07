@@ -3,9 +3,9 @@ Handles back-translation paraphrasing of multiple files using the Gemini API.
 """
 
 import logging
-import translate_single_file
-import log_single_file
-from config import Config, TypeOfTranslation # Import Config and Enum
+from . import translate_single_file
+from . import log_single_file
+from .config import Config, TypeOfTranslation  # Import Config and Enum
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)

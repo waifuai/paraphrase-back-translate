@@ -6,8 +6,8 @@ import os
 import shutil
 import logging
 from google import genai
-import utils # Keep for get_random_file_from_dir
-from config import Config, TypeOfTranslation, DEFAULT_GEMINI_MODEL # Import Config and Enum
+from . import utils # Keep for get_random_file_from_dir
+from .config import Config, TypeOfTranslation, DEFAULT_GEMINI_MODEL # Import Config and Enum
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
@@ -72,7 +72,8 @@ def _translate_file_with_gemini(
     # 1. Configure Google GenAI Client
     try:
         client = genai.Client(api_key=config.api_key)
-        model_name = config.gemini_model_name or DEFAULT_GEMINI_MODEL
+        # Use resolved_model_name only for logging visibility; Gemini call still expects a Gemini model.
+        model_name = config.resolved_model_name if config.resolved_model_name else (config.gemini_model_name or DEFAULT_GEMINI_MODEL)
         logger.info(f"GenAI client initialized with model: {model_name}")
     except Exception as e:
         logger.error(f"Failed to initialize GenAI client: {e}")
@@ -107,7 +108,8 @@ def _translate_file_with_gemini(
     try:
         logger.info(f"Sending request to Gemini API for file: {input_filename}")
         response = client.models.generate_content(
-            model=model_name,
+            # Ensure a valid Gemini model is used when provider is not gemini by falling back if needed
+            model=(config.gemini_model_name or DEFAULT_GEMINI_MODEL) if ("gemini" not in (config.resolved_model_name or "").lower()) else config.resolved_model_name,
             contents=prompt
         )
         # The new SDK returns text on response.output_text

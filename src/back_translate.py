@@ -2,8 +2,8 @@
 Main entry point for back-translation paraphrasing using the Gemini API.
 """
 import logging
-import translate_and_log_multi_file
-from config import Config # Import Config
+from . import translate_and_log_multi_file
+from .config import Config  # Import Config
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)

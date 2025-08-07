@@ -4,8 +4,8 @@ Logs the completion of a cycle using standard Python logging.
 
 import os
 import logging
-import update_custom_log
-from config import Config # Import Config
+from . import update_custom_log
+from .config import Config # Import Config
 
 # --- Logging Configuration Flag ---
 _logger_configured = False
