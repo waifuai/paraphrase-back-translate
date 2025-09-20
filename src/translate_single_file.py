@@ -1,13 +1,17 @@
 """
-Translates a single file using the specified Gemini API model.
+Translates a single file using the specified Gemini API model with rate limiting.
 """
 
 import os
 import shutil
 import logging
+from typing import Optional
 from google import genai
-from . import utils # Keep for get_random_file_from_dir
-from .config import Config, TypeOfTranslation, DEFAULT_GEMINI_MODEL # Import Config and Enum
+from google.genai import types
+
+from . import utils
+from .config import Config, TypeOfTranslation, DEFAULT_GEMINI_MODEL
+from .rate_limiter import wait_for_rate_limit
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
@@ -103,28 +107,35 @@ def _translate_file_with_gemini(
     target_lang = "French" if current_translation_type == TypeOfTranslation.en_to_fr else "English"
     prompt = f"Translate the following {source_lang} text to {target_lang}:\n\n{input_text}"
 
-    # 4. Call Gemini API via google-genai SDK
+    # 4. Call Gemini API via google-genai SDK with rate limiting
     translation = ""
     try:
+        # Apply rate limiting before API call
+        waited = wait_for_rate_limit()
+        if waited:
+            logger.info(f"Rate limit applied, waited before API call for file: {input_filename}")
+
         logger.info(f"Sending request to Gemini API for file: {input_filename}")
+
+        # Determine model to use
+        model_to_use = config.resolved_model_name
+        if "gemini" not in (model_to_use or "").lower():
+            model_to_use = config.gemini_model_name or DEFAULT_GEMINI_MODEL
+
         response = client.models.generate_content(
-            # Ensure a valid Gemini model is used when provider is not gemini by falling back if needed
-            model=(config.gemini_model_name or DEFAULT_GEMINI_MODEL) if ("gemini" not in (config.resolved_model_name or "").lower()) else config.resolved_model_name,
+            model=model_to_use,
             contents=prompt
         )
-        # The new SDK returns text on response.output_text
-        if hasattr(response, "output_text") and response.output_text:
-            translation = response.output_text
+
+        # Extract translation from response
+        translation = _extract_translation_from_response(response, input_filename)
+
+        if translation:
             logger.info(f"Translation successful for file: {input_filename}")
         else:
-            # Fallback attempts for robustness across SDK minor versions
-            text_candidate = getattr(response, "text", "") or getattr(response, "candidates", "")
-            if text_candidate:
-                translation = str(text_candidate)
-                logger.info(f"Translation extracted via fallback field for file: {input_filename}")
-            else:
-                logger.warning(f"GenAI response for {input_filename} was empty or blocked. Raw response present but no text.")
-                translation = "GEMINI_RESPONSE_EMPTY_OR_BLOCKED"
+            logger.warning(f"GenAI response for {input_filename} was empty or blocked. Raw response present but no text.")
+            translation = "GEMINI_RESPONSE_EMPTY_OR_BLOCKED"
+
     except Exception as e:
         logger.error(f"Error during GenAI API call for {input_filename}: {e}")
         translation = f"GEMINI_API_ERROR: {e}"
@@ -156,13 +167,52 @@ def _write_translation_output(
         # Log the error, but the process might continue with the next file
 
 
+def _extract_translation_from_response(response: types.GenerateContentResponse, filename: str) -> Optional[str]:
+    """
+    Extract translation text from Gemini API response.
+
+    Args:
+        response: Gemini API response object
+        filename: Name of file being translated (for logging)
+
+    Returns:
+        Extracted translation text or None if not found
+    """
+    try:
+        # The new SDK returns text on response.output_text
+        if hasattr(response, "output_text") and response.output_text:
+            return response.output_text.strip()
+
+        # Fallback attempts for robustness across SDK minor versions
+        text_candidate = getattr(response, "text", "") or getattr(response, "candidates", "")
+        if text_candidate:
+            translation = str(text_candidate).strip()
+            logger.info(f"Translation extracted via fallback field for file: {filename}")
+            return translation
+
+        logger.warning(f"No text content found in response for file: {filename}")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error extracting translation from response for {filename}: {e}")
+        return None
+
+
 def _move_input_to_completed(
     config: Config,
     current_translation_type: TypeOfTranslation,
-    input_filename: str # Original filename from the pool
+    input_filename: str  # Original filename from the pool
 ) -> None:
     """
     Moves the original input file to the completed directory, using paths from config.
+
+    Args:
+        config: Configuration object
+        current_translation_type: Translation direction
+        input_filename: Name of file to move
+
+    Raises:
+        OSError: If file cannot be moved
     """
     # Get directories from config
     source_dir_path = config.get_input_dir(current_translation_type)
@@ -173,7 +223,11 @@ def _move_input_to_completed(
     completed_input_path = os.path.join(completed_dir_path, input_filename)
 
     # Ensure completed directory exists
-    os.makedirs(completed_dir_path, exist_ok=True)
+    try:
+        os.makedirs(completed_dir_path, exist_ok=True)
+    except OSError as e:
+        logger.error(f"Failed to create completed directory '{completed_dir_path}': {e}")
+        raise
 
     # Move original input file to completed
     if os.path.exists(original_input_path):
@@ -182,6 +236,6 @@ def _move_input_to_completed(
             shutil.move(original_input_path, completed_input_path)
         except Exception as e:
             logger.error(f"Error moving file {original_input_path} to {completed_input_path}: {e}")
-            # Log the error, but allow the cycle to potentially continue
+            raise OSError(f"Failed to move file '{original_input_path}' to '{completed_input_path}': {e}") from e
     else:
         logger.warning(f"Original input file {original_input_path} not found for moving (might have been processed already or deleted).")
