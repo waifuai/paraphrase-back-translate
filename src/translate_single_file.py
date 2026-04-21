@@ -1,23 +1,22 @@
 """
-Translates a single file using the specified Gemini API model with rate limiting.
+Translates a single file using the specified model via OpenRouter API with rate limiting.
 """
 
 import os
 import shutil
 import logging
 from typing import Optional
-from google import genai
-from google.genai import types
+import requests
 
 from . import utils
-from .config import Config, TypeOfTranslation, DEFAULT_GEMINI_MODEL
+from .config import Config, TypeOfTranslation, DEFAULT_OPENROUTER_MODEL
 from .rate_limiter import wait_for_rate_limit
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)
 
-# --- Gemini Client Configuration ---
-# Client is configured dynamically within _translate_file using the API key from Config
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
 
 def translate_single_file(
     config: Config,
@@ -25,7 +24,7 @@ def translate_single_file(
 ) -> None:
     """
     Translates a single file based on the provided configuration and cycle type
-    using the Gemini API.
+    using the OpenRouter API.
 
     Args:
         config: The configuration object, containing API key and model name.
@@ -35,8 +34,8 @@ def translate_single_file(
     input_filename = _get_input_file(config, current_translation_type)
     input_filepath = os.path.join(config.get_input_dir(current_translation_type), input_filename)
 
-    # Translate file directly from input pool to output pool using Gemini
-    _translate_file_with_gemini(config, input_filepath, input_filename, current_translation_type)
+    # Translate file directly from input pool to output pool
+    _translate_file_with_openrouter(config, input_filepath, input_filename, current_translation_type)
 
     # Move the original input file to completed directory
     _move_input_to_completed(config, current_translation_type, input_filename)
@@ -52,17 +51,17 @@ def _get_input_file(config: Config, current_translation_type: TypeOfTranslation)
         return filename
     except RuntimeError as e:
         logger.error(f"Error getting input file: {e}")
-        raise # Re-raise the error to stop the process if no input file found
+        raise  # Re-raise the error to stop the process if no input file found
 
 
-def _translate_file_with_gemini(
+def _translate_file_with_openrouter(
     config: Config,
     input_filepath: str,
-    input_filename: str, # Needed for output filename
+    input_filename: str,  # Needed for output filename
     current_translation_type: TypeOfTranslation
 ) -> None:
     """
-    Performs the translation using the Gemini API.
+    Performs the translation using the OpenRouter API.
     Reads directly from the input file path and writes directly to the final output path.
 
     Args:
@@ -71,26 +70,19 @@ def _translate_file_with_gemini(
         input_filename: Original filename (used for output).
         current_translation_type: The direction for this cycle.
     """
-    logger.info(f"Translating file using Gemini: {input_filepath}")
+    logger.info(f"Translating file using OpenRouter: {input_filepath}")
 
-    # 1. Configure Google GenAI Client
-    try:
-        client = genai.Client(api_key=config.api_key)
-        # Use resolved_model_name only for logging visibility; Gemini call still expects a Gemini model.
-        model_name = config.resolved_model_name if config.resolved_model_name else (config.gemini_model_name or DEFAULT_GEMINI_MODEL)
-        logger.info(f"GenAI client initialized with model: {model_name}")
-    except Exception as e:
-        logger.error(f"Failed to initialize GenAI client: {e}")
-        _write_translation_output(config, input_filename, current_translation_type, f"GEMINI_CONFIG_ERROR: {e}")
-        return
+    # 1. Resolve model name
+    model_name = config.resolved_model_name if config.resolved_model_name else DEFAULT_OPENROUTER_MODEL
+    logger.info(f"Using model: {model_name}")
 
     # 2. Read Input Text
     try:
         with open(input_filepath, "r", encoding='utf-8') as f:
-             input_text = f.read()
+            input_text = f.read()
         if not input_text.strip():
             logger.warning(f"Input file {input_filename} is empty or contains only whitespace. Skipping translation.")
-            translation = "" # Write empty file for empty input
+            translation = ""  # Write empty file for empty input
             _write_translation_output(config, input_filename, current_translation_type, translation)
             return
     except FileNotFoundError:
@@ -107,7 +99,7 @@ def _translate_file_with_gemini(
     target_lang = "French" if current_translation_type == TypeOfTranslation.en_to_fr else "English"
     prompt = f"Translate the following {source_lang} text to {target_lang}:\n\n{input_text}"
 
-    # 4. Call Gemini API via google-genai SDK with rate limiting
+    # 4. Call OpenRouter API with rate limiting
     translation = ""
     try:
         # Apply rate limiting before API call
@@ -115,30 +107,39 @@ def _translate_file_with_gemini(
         if waited:
             logger.info(f"Rate limit applied, waited before API call for file: {input_filename}")
 
-        logger.info(f"Sending request to Gemini API for file: {input_filename}")
+        logger.info(f"Sending request to OpenRouter API for file: {input_filename}")
 
-        # Determine model to use
-        model_to_use = config.resolved_model_name
-        if "gemini" not in (model_to_use or "").lower():
-            model_to_use = config.gemini_model_name or DEFAULT_GEMINI_MODEL
+        headers = {
+            "Authorization": f"Bearer {config.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0,
+        }
 
-        response = client.models.generate_content(
-            model=model_to_use,
-            contents=prompt
-        )
+        resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=120)
 
-        # Extract translation from response
-        translation = _extract_translation_from_response(response, input_filename)
-
-        if translation:
-            logger.info(f"Translation successful for file: {input_filename}")
+        if resp.status_code != 200:
+            error_msg = f"OpenRouter API error {resp.status_code}: {resp.text[:500]}"
+            logger.error(f"Error during OpenRouter API call for {input_filename}: {error_msg}")
+            translation = f"OPENROUTER_API_ERROR: {error_msg}"
         else:
-            logger.warning(f"GenAI response for {input_filename} was empty or blocked. Raw response present but no text.")
-            translation = "GEMINI_RESPONSE_EMPTY_OR_BLOCKED"
+            data = resp.json()
+            choices = data.get("choices", [])
+            if choices:
+                translation = (choices[0].get("message", {}).get("content") or "").strip()
+
+            if translation:
+                logger.info(f"Translation successful for file: {input_filename}")
+            else:
+                logger.warning(f"OpenRouter response for {input_filename} was empty.")
+                translation = "OPENROUTER_RESPONSE_EMPTY"
 
     except Exception as e:
-        logger.error(f"Error during GenAI API call for {input_filename}: {e}")
-        translation = f"GEMINI_API_ERROR: {e}"
+        logger.error(f"Error during OpenRouter API call for {input_filename}: {e}")
+        translation = f"OPENROUTER_API_ERROR: {e}"
 
     # 5. Write Output
     _write_translation_output(config, input_filename, current_translation_type, translation)
@@ -152,7 +153,7 @@ def _write_translation_output(
 ) -> None:
     """Helper function to write the translation (or error message) to the output file."""
     output_dir_path = config.get_output_dir(current_translation_type)
-    final_translated_path = os.path.join(output_dir_path, input_filename) # Output uses original filename
+    final_translated_path = os.path.join(output_dir_path, input_filename)  # Output uses original filename
 
     # Ensure output directory exists
     os.makedirs(output_dir_path, exist_ok=True)
@@ -161,41 +162,10 @@ def _write_translation_output(
     logger.info(f"Writing output to: {final_translated_path}")
     try:
         with open(final_translated_path, "w", encoding='utf-8') as f:
-             f.write(translation)
+            f.write(translation)
     except Exception as e:
         logger.error(f"Error writing output file {final_translated_path}: {e}")
         # Log the error, but the process might continue with the next file
-
-
-def _extract_translation_from_response(response: types.GenerateContentResponse, filename: str) -> Optional[str]:
-    """
-    Extract translation text from Gemini API response.
-
-    Args:
-        response: Gemini API response object
-        filename: Name of file being translated (for logging)
-
-    Returns:
-        Extracted translation text or None if not found
-    """
-    try:
-        # The new SDK returns text on response.output_text
-        if hasattr(response, "output_text") and response.output_text:
-            return response.output_text.strip()
-
-        # Fallback attempts for robustness across SDK minor versions
-        text_candidate = getattr(response, "text", "") or getattr(response, "candidates", "")
-        if text_candidate:
-            translation = str(text_candidate).strip()
-            logger.info(f"Translation extracted via fallback field for file: {filename}")
-            return translation
-
-        logger.warning(f"No text content found in response for file: {filename}")
-        return None
-
-    except Exception as e:
-        logger.error(f"Error extracting translation from response for {filename}: {e}")
-        return None
 
 
 def _move_input_to_completed(

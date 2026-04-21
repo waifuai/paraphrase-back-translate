@@ -29,7 +29,7 @@ class OpenRouterProvider(TranslationProvider):
 
         Args:
             api_key: OpenRouter API key
-            model: Default model to use (e.g., "deepseek/deepseek-chat-v3")
+            model: Default model to use (e.g., "openrouter/free")
         """
         super().__init__(api_key, model)
         self._session: Optional[aiohttp.ClientSession] = None

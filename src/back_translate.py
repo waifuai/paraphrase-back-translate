@@ -1,5 +1,5 @@
 """
-Main entry point for back-translation paraphrasing using the Gemini API.
+Main entry point for back-translation paraphrasing using the OpenRouter API.
 """
 import logging
 from . import translate_and_log_multi_file
@@ -35,7 +35,7 @@ def main(config: Config):
 #             pooling_dir="./data/pooling",
 #             log_dir="./logs",
 #             # api_key_path="~/.api-gemini" # Default path
-#             # gemini_model_name="gemini-2.5-pro" # Default model
+#             # gemini_model_name="openrouter/free" # Default model
 #         )
 #         # Setup basic logging if run directly
 #         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

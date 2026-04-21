@@ -1,13 +1,13 @@
-# Back Translate CLI (Gemini API Version)
+# Back Translate CLI (OpenRouter Version)
 
-This project performs back-translation for paraphrase generation using the Google GenAI SDK. It takes text files from an input pool, translates them (e.g., English to French), then translates the result back (e.g., French to English) over a specified number of cycles using a specified Gemini model.
+This project performs back-translation for paraphrase generation using the OpenRouter API. It takes text files from an input pool, translates them (e.g., English to French), then translates the result back (e.g., French to English) over a specified number of cycles using a specified OpenRouter model.
 
 ## Files
 
 - [`src/main.py`](src/main.py:1): Command-line interface entry point. Parses arguments and starts the process.
 - [`src/back_translate.py`](src/back_translate.py:1): Main logic orchestrating the back-translation cycles.
 - [`src/translate_and_log_multi_file.py`](src/translate_and_log_multi_file.py:1): Manages multiple back-translation cycles, alternating translation direction.
-- [`src/translate_single_file.py`](src/translate_single_file.py:1): Handles translation of a single file using the Google GenAI SDK.
+- [`src/translate_single_file.py`](src/translate_single_file.py:1): Handles translation of a single file using the OpenRouter API.
 - [`src/log_single_file.py`](src/log_single_file.py:1): Configures logging and logs cycle completion.
 - [`src/update_custom_log.py`](src/update_custom_log.py:1): Helper function to log metrics using standard Python logging.
 - [`src/config.py`](src/config.py:1): Defines the `Config` dataclass to hold settings, including API key loading.
@@ -18,7 +18,7 @@ This project performs back-translation for paraphrase generation using the Googl
 
 ## Model Information
 
-This version uses Google GenAI for translation. You can specify the model name via the command line (default: `gemini-2.5-pro`). Access requires a Gemini API key.
+This version uses OpenRouter for translation. You can specify the model name via the command line (default: `openrouter/free`). Access requires an OpenRouter API key.
 
 ## Installation
 
@@ -48,8 +48,8 @@ It is recommended to use a virtual environment. This project uses `uv` for envir
 ## Setup
 
 1.  API Key:
-    - Preferred: set `GEMINI_API_KEY` or `GOOGLE_API_KEY` in your environment.
-    - Fallback: save the key in a plain text file at `~/.api-gemini`. You can specify a different path using the `--api-key-path` argument.
+    - Preferred: set `OPENROUTER_API_KEY` in your environment.
+    - Fallback: save the key in a plain text file at `~/.api-openrouter`. You can specify a different path using the `--api-key-path` argument.
     - Security: keep this secret and out of version control.
 
 2.  Directory Structure:
@@ -73,7 +73,7 @@ Run the CLI from the project root directory using the Python interpreter from th
 .venv/Scripts/python.exe -m src.main --cycles 2 --translation-type en_to_fr
 
 # Example: Run 1 cycle, fr->en, specifying directories and model
-.venv/Scripts/python.exe -m src.main --cycles 1 --translation-type fr_to_en --pooling-dir ./my_data --log-dir ./my_logs --gemini-model gemini-2.5-pro --api-key-path /path/to/my/gemini.key
+.venv/Scripts/python.exe -m src.main --cycles 1 --translation-type fr_to_en --pooling-dir ./my_data --log-dir ./my_logs --model openrouter/free --api-key-path /path/to/my/key
 ```
 
 Arguments:
@@ -82,10 +82,10 @@ Arguments:
 - `--translation-type`: Initial translation direction (`en_to_fr` or `fr_to_en`, default: `en_to_fr`).
 - `--pooling-dir`: Directory containing the `input_pool`, `french_pool`, etc. subdirectories (default: `./data/pooling`).
 - `--log-dir`: Directory where log files will be created (default: `./logs`).
-- `--gemini-model`: Name of the Gemini model to use (default: `gemini-2.5-pro`).
-- `--api-key-path`: Path to the file containing your Gemini API key (default: `~/.api-gemini`).
+- `--model`: Name of the OpenRouter model to use (default: `openrouter/free`).
+- `--api-key-path`: Path to the file containing your OpenRouter API key (default: `~/.api-openrouter`).
 
-The script will randomly select a file from the appropriate input pool (`input_pool` for `en_to_fr`, `french_pool` for `fr_to_en`), translate it using the Gemini API, move the original to the corresponding `_completed` directory, and place the translated file in the output pool (`french_pool` for `en_to_fr`, `output_pool` for `fr_to_en`). This process repeats, alternating the translation direction for the specified number of cycles. Log messages indicating progress and any errors will be printed to the console and saved in the file specified by `--log-dir` (default: `./logs/backtranslate.log`).
+The script will randomly select a file from the appropriate input pool (`input_pool` for `en_to_fr`, `french_pool` for `fr_to_en`), translate it using the OpenRouter API, move the original to the corresponding `_completed` directory, and place the translated file in the output pool (`french_pool` for `en_to_fr`, `output_pool` for `fr_to_en`). This process repeats, alternating the translation direction for the specified number of cycles. Log messages indicating progress and any errors will be printed to the console and saved in the file specified by `--log-dir` (default: `./logs/backtranslate.log`).
 
 ## Dependencies
 
@@ -93,7 +93,7 @@ Two requirement files are provided to balance consumer flexibility and contribut
 
 - Runtime [`requirements.txt`](requirements.txt:1):
   ```
-  google-genai~=1.28
+  requests
   ```
 - Development [`requirements-dev.txt`](requirements-dev.txt:1):
   ```
