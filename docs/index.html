@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Back Translate CLI (OpenRouter Version)</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --card-bg: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --accent: #58a6ff;
+  --accent2: #7ee787;
+  --accent3: #d2a8ff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; }
+.container { max-width: 1100px; margin: 0 auto; }
+header { text-align: center; margin-bottom: 3rem; padding: 2rem 0; border-bottom: 1px solid var(--border); }
+header h1 { font-size: 2.5rem; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--accent3)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 0.5rem; }
+header p { color: var(--text-muted); font-size: 1.1rem; }
+section { margin-bottom: 2.5rem; }
+h2 { font-size: 1.4rem; margin-bottom: 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 0.5rem; }
+.count { font-size: 0.85rem; color: var(--text-muted); font-weight: 400; }
+.section-desc { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem; }
+.link-list { display: flex; flex-direction: column; gap: 0.25rem; }
+.link-list a { color: var(--accent); text-decoration: none; padding: 0.4rem 0.75rem; border-radius: 6px; transition: background 0.15s; font-size: 0.95rem; }
+.link-list a:hover { background: var(--card-bg); text-decoration: underline; }
+footer { text-align: center; color: var(--text-muted); font-size: 0.8rem; padding-top: 2rem; border-top: 1px solid var(--border); margin-top: 2rem; }
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+<h1>paraphrase-back-translate</h1>
+<p></p>
+</header>
+<section>
+<h2>Project Description</h2>
+<h1>Back Translate CLI (OpenRouter Version)</h1>
+<p>This project performs back-translation for paraphrase generation using the OpenRouter API. It takes text files from an input pool, translates them (e.g., English to French), then translates the result back (e.g., French to English) over a specified number of cycles using a specified OpenRouter model.</p>
+<h2>Files</h2>
+<ul>
+<li><a href="src/main.py:1"><code>src/main.py</code></a>: Command-line interface entry point. Parses arguments and starts the process.</li>
+<li><a href="src/back_translate.py:1"><code>src/back_translate.py</code></a>: Main logic orchestrating the back-translation cycles.</li>
+<li><a href="src/translate_and_log_multi_file.py:1"><code>src/translate_and_log_multi_file.py</code></a>: Manages multiple back-translation cycles, alternating translation direction.</li>
+<li><a href="src/translate_single_file.py:1"><code>src/translate_single_file.py</code></a>: Handles translation of a single file using the OpenRouter API.</li>
+<li><a href="src/log_single_file.py:1"><code>src/log_single_file.py</code></a>: Configures logging and logs cycle completion.</li>
+<li><a href="src/update_custom_log.py:1"><code>src/update_custom_log.py</code></a>: Helper function to log metrics using standard Python logging.</li>
+<li><a href="src/config.py:1"><code>src/config.py</code></a>: Defines the <code>Config</code> dataclass to hold settings, including API key loading.</li>
+<li><a href="src/utils.py:1"><code>src/utils.py</code></a>: Basic utility functions (e.g., getting random files).</li>
+<li><a href="LICENSE:1"><code>LICENSE</code></a>: Project license (MIT-0).</li>
+<li><a href="pytest.ini:1"><code>pytest.ini</code></a>: Configuration for pytest.</li>
+<li><a href=".gitignore:1"><code>.gitignore</code></a>: Specifies intentionally untracked files that Git should ignore.</li>
+</ul>
+<h2>Model Information</h2>
+<p>This version uses OpenRouter for translation. You can specify the model name via the command line (default: <code>openrouter/free</code>). Access requires an OpenRouter API key.</p>
+<h2>Installation</h2>
+<p>It is recommended to use a virtual environment. This project uses <code>uv</code> for environment and package management.</p>
+<ol>
+<li>Create virtual environment:
+    <code>bash
+    python -m uv venv .venv</code></li>
+<li>Activate environment:
+    <code>bash
+    # On Windows bash shells like Git Bash
+    source .venv/Scripts/activate
+    # On Linux/macOS
+    # source .venv/bin/activate</code></li>
+<li>Install tooling into the venv (if needed) and dependencies:
+    <code>bash
+    .venv/Scripts/python.exe -m ensurepip
+    .venv/Scripts/python.exe -m pip install uv
+    # Runtime only
+    .venv/Scripts/python.exe -m uv pip install -r requirements.txt
+    # Or for contributors/CI
+    .venv/Scripts/python.exe -m uv pip install -r requirements-dev.txt</code></li>
+</ol>
+<h2>Setup</h2>
+<ol>
+<li>
+<p>API Key:</p>
+<ul>
+<li>Preferred: set <code>OPENROUTER_API_KEY</code> in your environment.</li>
+<li>Fallback: save the key in a plain text file at <code>~/.api-openrouter</code>. You can specify a different path using the <code>--api-key-path</code> argument.</li>
+<li>Security: keep this secret and out of version control.</li>
+</ul>
+</li>
+<li>
+<p>Directory Structure:
+    Before running, create the necessary directory structure for input/output files (relative to where you run the command):
+    <code>./data/pooling/
+    ├── input_pool/             # Place initial English .txt files here
+    ├── french_pool/            # Initially empty, will hold en-&gt;fr results
+    ├── output_pool/            # Initially empty, will hold fr-&gt;en results (final paraphrases)
+    ├── input_pool_completed/   # Processed English files moved here
+    └── french_pool_completed/  # Processed French files moved here
+    ./logs/                     # Directory for log files (created automatically)</code></p>
+</li>
+</ol>
+<h2>Usage</h2>
+<p>Run the CLI from the project root directory using the Python interpreter from the virtual environment:</p>
+<pre><code class="language-bash"># Example: Run 2 back-translation cycles starting with en-&gt;fr, using defaults
+.venv/Scripts/python.exe -m src.main --cycles 2 --translation-type en_to_fr
+
+# Example: Run 1 cycle, fr-&gt;en, specifying directories and model
+.venv/Scripts/python.exe -m src.main --cycles 1 --translation-type fr_to_en --pooling-dir ./my_data --log-dir ./my_logs --model openrouter/free --api-key-path /path/to/my/key
+</code></pre>
+<p>Arguments:</p>
+<ul>
+<li><code>--cycles</code>: Number of back-translation cycles (default: 1). Each cycle involves one forward and one backward translation (e.g., en-&gt;fr then fr-&gt;en).</li>
+<li><code>--translation-type</code>: Initial translation direction (<code>en_to_fr</code> or <code>fr_to_en</code>, default: <code>en_to_fr</code>).</li>
+<li><code>--pooling-dir</code>: Directory containing the <code>input_pool</code>, <code>french_pool</code>, etc. subdirectories (default: <code>./data/pooling</code>).</li>
+<li><code>--log-dir</code>: Directory where log files will be created (default: <code>./logs</code>).</li>
+<li><code>--model</code>: Name of the OpenRouter model to use (default: <code>openrouter/free</code>).</li>
+<li><code>--api-key-path</code>: Path to the file containing your OpenRouter API key (default: <code>~/.api-openrouter</code>).</li>
+</ul>
+<p>The script will randomly select a file from the appropriate input pool (<code>input_pool</code> for <code>en_to_fr</code>, <code>french_pool</code> for <code>fr_to_en</code>), translate it using the OpenRouter API, move the original to the corresponding <code>_completed</code> directory, and place the translated file in the output pool (<code>french_pool</code> for <code>en_to_fr</code>, <code>output_pool</code> for <code>fr_to_en</code>). This process repeats, alternating the translation direction for the specified number of cycles. Log messages indicating progress and any errors will be printed to the console and saved in the file specified by <code>--log-dir</code> (default: <code>./logs/backtranslate.log</code>).</p>
+<h2>Dependencies</h2>
+<p>Two requirement files are provided to balance consumer flexibility and contributor reproducibility:</p>
+<ul>
+<li>Runtime <a href="requirements.txt:1"><code>requirements.txt</code></a>:
+  <code>requests</code></li>
+<li>Development <a href="requirements-dev.txt:1"><code>requirements-dev.txt</code></a>:
+  <code>-r requirements.txt
+  pytest==8.3.3
+  iniconfig==2.1.0
+  packaging==25.0
+  pluggy==1.6.0
+  colorama==0.4.6</code></li>
+</ul>
+<p>Install patterns:</p>
+<pre><code class="language-bash"># Runtime only
+.venv/Scripts/python.exe -m uv pip install -r requirements.txt
+# Development/CI
+.venv/Scripts/python.exe -m uv pip install -r requirements-dev.txt
+# Run tests
+.venv/Scripts/python.exe -m pytest -q
+</code></pre>
+</section>
+<section>
+<h2>Source Code</h2>
+<p class="section-desc">GitHub repository</p>
+<div class="link-list">
+<a href="https://github.com/waifuai/paraphrase-back-translate">https://github.com/waifuai/paraphrase-back-translate</a>
+</div>
+</section>
+<footer>
+<p>Generated for AI agent crawlability. Source: <a href="https://github.com/waifuai/paraphrase-back-translate">GitHub</a></p>
+</footer>
+</div>
+</body>
+</html>
